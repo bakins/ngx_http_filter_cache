@@ -13,6 +13,7 @@ static char *ngx_http_filter_cache_key(ngx_conf_t *cf, ngx_command_t *cmd, void 
 static char *ngx_http_filter_cache(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
 
 typedef struct {
+    ngx_int_t index;
     ngx_path_t *cache_path;
     time_t cache_use_stale;
     ngx_http_complex_value_t cache_key;
@@ -23,12 +24,6 @@ static ngx_command_t  ngx_http_filter_cache_commands[] = {
     { ngx_string("filter_cache"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_FLAG,
       ngx_http_filter_cache,
-      NGX_HTTP_LOC_CONF_OFFSET,
-      0,
-      NULL },
-    { ngx_string("filter_cache_key"),
-      NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_FLAG,
-      ngx_http_filter_cache_key,
       NGX_HTTP_LOC_CONF_OFFSET,
       0,
       NULL },
@@ -48,16 +43,23 @@ static ngx_command_t  ngx_http_filter_cache_commands[] = {
     ngx_null_command
 };
 
+static ngx_str_t ngx_http_filter_cache_key = ngx_string("filter_cache_key");
+
 static char *
 ngx_http_filter_cache(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 {
     ngx_http_core_loc_conf_t  *clcf;
-
-    /*TODO: make sure we have a key*/
+    ngx_http_filter_cache_conf_t *flcf;
 
     clcf = ngx_http_conf_get_module_loc_conf(cf, ngx_http_core_module);
+
     clcf->handler =  ngx_http_filter_cache_handler;
+
+    flcf->index = ngx_http_get_variable_index(cf, &ngx_http_filter_cache_key);
+
+    if (flcf->index == NGX_ERROR) {
+        return NGX_CONF_ERROR;
+    }
 
     return NGX_CONF_OK;
 }
-
