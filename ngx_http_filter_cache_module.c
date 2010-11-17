@@ -48,17 +48,25 @@ static char *
 ngx_http_filter_cache(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 {
     ngx_http_core_loc_conf_t  *clcf;
-    ngx_http_filter_cache_conf_t *flcf;
+    ngx_http_filter_cache_conf_t *flcf = conf;
+    char  *rv;
 
-    clcf = ngx_http_conf_get_module_loc_conf(cf, ngx_http_core_module);
+    rv = ngx_conf_set_flag_slot(cf, cmd, conf);
 
-    clcf->handler =  ngx_http_filter_cache_handler;
-
-    flcf->index = ngx_http_get_variable_index(cf, &ngx_http_filter_cache_key);
-
-    if (flcf->index == NGX_ERROR) {
-        return NGX_CONF_ERROR;
+    if (rv != NGX_CONF_OK) {
+        return rv;
     }
 
+    if(flcf->enable) {
+        clcf = ngx_http_conf_get_module_loc_conf(cf, ngx_http_core_module);
+
+        clcf->handler =  ngx_http_filter_cache_handler;
+
+        flcf->index = ngx_http_get_variable_index(cf, &ngx_http_filter_cache_key);
+
+        if (flcf->index == NGX_ERROR) {
+            return NGX_CONF_ERROR;
+        }
+    }
     return NGX_CONF_OK;
 }
