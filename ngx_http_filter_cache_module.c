@@ -16,7 +16,6 @@ typedef struct {
     ngx_int_t index;
     ngx_path_t *cache_path;
     time_t cache_use_stale;
-    ngx_http_complex_value_t cache_key;
 } ngx_http_filter_cache_conf_t;
 
 static ngx_command_t  ngx_http_filter_cache_commands[] = {
