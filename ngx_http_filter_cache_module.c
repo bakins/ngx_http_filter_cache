@@ -2,19 +2,62 @@
 #include <ngx_core.h>
 #include <ngx_http.h>
 
-ngx_module_t  ngx_http_cache_filter_module;
+ngx_module_t  ngx_http_filter_cache_module;
 
-static ngx_int_t ngx_http_cache_filter_init(ngx_conf_t *cf);
-static ngx_int_t ngx_http_cache_filter_handler(ngx_http_request_t *r);
-static void *ngx_http_cache_filter_create_conf(ngx_conf_t *cf);
-static char *ngx_http_cache_filter_merge_conf(ngx_conf_t *cf, void *parent, void *child);
-static ngx_int_t ngx_http_cache_filter_init(ngx_conf_t *cf);
-static char *ngx_http_cache_filter_key(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
-static char *ngx_http_cache_filter(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
+static ngx_int_t ngx_http_filter_cache_init(ngx_conf_t *cf);
+static ngx_int_t ngx_http_filter_cache_handler(ngx_http_request_t *r);
+static void *ngx_http_filter_cache_create_conf(ngx_conf_t *cf);
+static char *ngx_http_filter_cache_merge_conf(ngx_conf_t *cf, void *parent, void *child);
+static ngx_int_t ngx_http_filter_cache_init(ngx_conf_t *cf);
+static char *ngx_http_filter_cache_key(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
+static char *ngx_http_filter_cache(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
 
 typedef struct {
     ngx_path_t *cache_path;
-    ngx_uint_t cache_use_stale;
+    time_t cache_use_stale;
     ngx_http_complex_value_t cache_key;
-} ngx_http_cache_filter_conf_t;
+} ngx_http_filter_cache_conf_t;
+
+static ngx_command_t  ngx_http_filter_cache_commands[] = {
+
+    { ngx_string("filter_cache"),
+      NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_FLAG,
+      ngx_http_filter_cache,
+      NGX_HTTP_LOC_CONF_OFFSET,
+      0,
+      NULL },
+    { ngx_string("filter_cache_key"),
+      NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_FLAG,
+      ngx_http_filter_cache_key,
+      NGX_HTTP_LOC_CONF_OFFSET,
+      0,
+      NULL },
+    { ngx_string("filter_cache_path"),
+      NGX_HTTP_MAIN_CONF|NGX_CONF_1MORE,
+      ngx_conf_set_str_slot,
+      NGX_HTTP_LOC_CONF_OFFSET,
+      offsetof(ngx_http_filter_cache_conf_t, cache_path),
+      NULL},
+    /*TODO: make this a timer*/
+    { ngx_string("filter_cache_use_stale"),
+      NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
+      ngx_conf_set_sec_slot,
+      NGX_HTTP_LOC_CONF_OFFSET,
+      offsetof(ngx_http_filter_cache_conf_t, cache_use_stale),
+      NULL },
+    ngx_null_command
+};
+
+static char *
+ngx_http_filter_cache(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
+{
+    ngx_http_core_loc_conf_t  *clcf;
+
+    /*TODO: make sure we have a key*/
+
+    clcf = ngx_http_conf_get_module_loc_conf(cf, ngx_http_core_module);
+    clcf->handler =  ngx_http_filter_cache_handler;
+
+    return NGX_CONF_OK;
+}
 
