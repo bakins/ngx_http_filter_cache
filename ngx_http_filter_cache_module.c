@@ -33,7 +33,6 @@ static ngx_command_t  ngx_http_filter_cache_commands[] = {
       NGX_HTTP_LOC_CONF_OFFSET,
       offsetof(ngx_http_filter_cache_conf_t, cache_path),
       NULL},
-    /*TODO: make this a timer*/
     { ngx_string("filter_cache_use_stale"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
       ngx_conf_set_sec_slot,
