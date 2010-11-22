@@ -40,6 +40,7 @@ typedef struct
 /*context for the filter*/
 typedef struct
 {
+    ngx_int_t cacheable;
     ngx_str_t key;
     ngx_http_cache_t *cache;
     ngx_http_cache_t *orig_cache;
@@ -317,8 +318,7 @@ static ngx_int_t cache_miss(ngx_http_request_t *r,  ngx_http_filter_cache_ctx_t 
         }
     }
 
-    ngx_http_finalize_request(r, NGX_HTTP_NOT_FOUND);
-    return NGX_OK;
+    return NGX_HTTP_NOT_FOUND;
 }
 
 static ngx_int_t
@@ -347,6 +347,9 @@ ngx_http_filter_cache_handler(ngx_http_request_t *r)
     ngx_http_cache_t  *c;
     ngx_str_t                    *key;
     ngx_int_t          rc;
+
+    ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0,
+                  "%s: start", __func__);
 
     conf = ngx_http_get_module_loc_conf(r, ngx_http_filter_cache_module);
     ctx = ngx_pcalloc(r->pool, sizeof(ngx_http_filter_cache_ctx_t));
@@ -449,6 +452,9 @@ ngx_http_filter_cache_header_filter(ngx_http_request_t *r)
     ngx_chain_t   out;
     ssize_t offset;
 
+    ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0,
+                  "%s: start", __func__);
+
     conf = ngx_http_get_module_loc_conf(r, ngx_http_filter_cache_module);
 
     ctx = ngx_http_get_module_ctx(r, ngx_http_filter_cache_module);
@@ -456,6 +462,9 @@ ngx_http_filter_cache_header_filter(ngx_http_request_t *r)
     if(!ctx) {
         return ngx_http_next_header_filter(r);
     }
+
+    ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0,
+                  "%s: key: %s", __func__, ctx->key.data);
 
     if(r->cache != ctx->cache) {
         ctx->orig_cache = r->cache;
@@ -466,8 +475,6 @@ ngx_http_filter_cache_header_filter(ngx_http_request_t *r)
         ngx_pool_run_cleanup_file(r->pool, r->cache->file.fd);
         r->cache->file.fd = NGX_INVALID_FILE;
     }
-
-
 
     now = ngx_time();
 
@@ -486,7 +493,7 @@ ngx_http_filter_cache_header_filter(ngx_http_request_t *r)
         return ngx_http_next_header_filter(r);
     }
 
-    ctx->tf = tf =  ngx_pcalloc(r->pool, sizeof(ngx_temp_file_t));
+    tf =  ngx_pcalloc(r->pool, sizeof(ngx_temp_file_t));
 
     if (tf == NULL) {
         return NGX_ERROR;
@@ -528,7 +535,10 @@ ngx_http_filter_cache_header_filter(ngx_http_request_t *r)
     offset = ngx_write_chain_to_temp_file(tf, &out);
     tf->offset += offset;
 
+    ctx->tf = tf;
+
     r->cache = ctx->orig_cache;
+    ctx->cacheable = 1;
     return ngx_http_next_header_filter(r);
 }
 
@@ -541,10 +551,14 @@ ngx_http_filter_cache_body_filter(ngx_http_request_t *r, ngx_chain_t *in)
     int chain_contains_last_buffer = 0;
     ngx_chain_t *chain_link;
 
+    ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0,
+                  "%s: start", __func__);
+
+
     conf = ngx_http_get_module_loc_conf(r, ngx_http_filter_cache_module);
     ctx = ngx_http_get_module_ctx(r, ngx_http_filter_cache_module);
 
-    if (ctx == NULL) {
+    if (!ctx || !ctx->cacheable) {
         return ngx_http_next_body_filter(r, in);
     }
 
