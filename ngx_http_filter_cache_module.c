@@ -13,7 +13,7 @@ static void *ngx_http_filter_cache_create_conf(ngx_conf_t *cf);
 static char *ngx_http_filter_cache_merge_conf(ngx_conf_t *cf, void *parent, void *child);
 static char *ngx_http_filter_cache(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
 static ngx_int_t ngx_http_filter_cache_header_filter(ngx_http_request_t *r);
-static ngx_int_t ngx_http_filter_cache_body_filter(ngx_http_request_t *r);
+static ngx_int_t ngx_http_filter_cache_body_filter(ngx_http_request_t *r, ngx_chain_t *in));
 
 /*config */
 typedef struct {
