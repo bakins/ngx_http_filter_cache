@@ -536,7 +536,7 @@ ngx_http_filter_cache_header_filter(ngx_http_request_t *r)
 }
 
 static ngx_int_t
-ngx_http_filter_cache_header_filter(ngx_http_request_t *r, ngx_chain_t *in)
+ngx_http_filter_cache_body_filter(ngx_http_request_t *r, ngx_chain_t *in)
 {
     ngx_http_filter_cache_ctx_t *ctx;
     ngx_http_filter_cache_conf_t *conf;
