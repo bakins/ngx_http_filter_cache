@@ -532,6 +532,7 @@ ngx_http_filter_cache_header_filter(ngx_http_request_t *r)
     ngx_list_part_t *part;
     ngx_table_elt_t *h;
     ngx_uint_t i;
+    uchar *p;
 
     conf = ngx_http_get_module_loc_conf(r, ngx_http_filter_cache_module);
 
@@ -604,8 +605,18 @@ ngx_http_filter_cache_header_filter(ngx_http_request_t *r)
 
     /* Content Type */
     if ( r->headers_out.content_type.data ) {
-        ngx_cpystrn( ctx->buffer.pos, r->headers_out.content_type.data, r->headers_out.content_type.len + 1 );
-        ctx->buffer.pos += r->headers_out.content_type.len + 1;
+        p = r->headers_out.content_type.data;
+        while ( *p != ';' && p - r->headers_out.content_type.data < r->headers_out.content_type.len ) {
+            p++;
+        }
+        if ( *p == ';' ) {
+            ngx_cpystrn( ctx->buffer.pos, r->headers_out.content_type.data, r->headers_out.content_type.data - p );
+            ctx->buffer.pos += r->headers_out.content_type.data - p;
+        }
+        else {
+            ngx_cpystrn( ctx->buffer.pos, r->headers_out.content_type.data, r->headers_out.content_type.len + 1 );
+            ctx->buffer.pos += r->headers_out.content_type.len + 1;
+        }
     }
     else {
         *ctx->buffer.pos = (u_char)'\0';
