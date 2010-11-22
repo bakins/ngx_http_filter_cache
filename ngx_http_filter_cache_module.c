@@ -506,10 +506,10 @@ ngx_http_filter_cache_header_filter(ngx_http_request_t *r)
     }
 
     ctx->buffer.pos = ctx->buffer.start = ngx_palloc(r->pool, conf->buffer_size);
-    ctx->buffer.end = ctx->buffer.start + ctx->conf->buffer_size;
+    ctx->buffer.end = ctx->buffer.start + conf->buffer_size;
     ctx->buffer.temporary = 1;
-    ctx->buffer->memory = 1;
-    ctx->buffer->last_buf = 1;
+    ctx->buffer.memory = 1;
+    ctx->buffer.last_buf = 1;
 
     ctx->buffer.pos += r->cache->header_start;
     ctx->buffer.last = ctx->buffer.pos;
