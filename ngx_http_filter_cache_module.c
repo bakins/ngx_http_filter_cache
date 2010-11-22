@@ -357,6 +357,14 @@ ngx_http_filter_cache_handler(ngx_http_request_t *r)
                   "%s: start", __func__);
 
     conf = ngx_http_get_module_loc_conf(r, ngx_http_filter_cache_module);
+
+    ctx = ngx_http_get_module_ctx(r, ngx_http_filter_cache_module);
+
+    if(ctx) {
+        /*loop detected??*/
+        return NGX_ERROR;
+    }
+
     ctx = ngx_pcalloc(r->pool, sizeof(ngx_http_filter_cache_ctx_t));
 
     if (ctx == NULL) {
@@ -427,7 +435,8 @@ ngx_http_filter_cache_handler(ngx_http_request_t *r)
     switch (rc) {
 
     case NGX_OK:
-        rc= filter_cache_send(r);
+        return filter_cache_send(r);
+
         break;
     case NGX_HTTP_CACHE_STALE:
     case NGX_DECLINED:
