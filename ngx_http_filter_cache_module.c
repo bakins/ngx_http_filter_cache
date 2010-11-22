@@ -28,7 +28,7 @@ typedef struct {
     ngx_array_t *cache_bypass;
     ngx_array_t *no_cache;
     ngx_path_t *temp_path;
-} ngx_http_cache_filter_conf_t;
+} ngx_http_filter_cache_conf_t;
 
 /*meta information prepended to every cache file */
 typedef struct
@@ -46,8 +46,6 @@ typedef struct
     ngx_temp_file_t *tf;
     ngx_buf_t buffer;
 } ngx_http_filter_cache_ctx_t;
-
-static ngx_str_t  ngx_http_filter_cache_key = ngx_string("filter_cache_key");
 
 static ngx_conf_bitmask_t  ngx_http_filter_cache_next_upstream_masks[] = {
     { ngx_string("error"), NGX_HTTP_UPSTREAM_FT_ERROR },
@@ -136,7 +134,7 @@ static ngx_command_t  ngx_http_filter_cache_commands[] = {
     ngx_null_command
 };
 
-static ngx_http_module_t  ngx_filter_cache_module_ctx = {
+static ngx_http_module_t  ngx_http_filter_cache_module_ctx = {
     NULL,                                  /* preconfiguration */
     ngx_http_filter_cache_init,         /* postconfiguration */
     NULL,                                  /* create main configuration */
@@ -163,7 +161,7 @@ ngx_module_t  ngx_http_url_cache_module = {
     NGX_MODULE_V1_PADDING
 };
 
-tatic ngx_int_t
+static ngx_int_t
 ngx_http_filter_cache_init(ngx_conf_t *cf)
 {
     ngx_http_next_header_filter = ngx_http_top_header_filter;
@@ -299,7 +297,7 @@ ngx_http_filter_cache(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 
     lcf->cache = ngx_shared_memory_add(cf, &value[1], 0,
                                        &ngx_http_filter_cache_module);
-    if (flcf->cache == NULL) {
+    if (lcf->cache == NULL) {
         return NGX_CONF_ERROR;
     }
 
