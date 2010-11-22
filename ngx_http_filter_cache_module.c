@@ -334,10 +334,10 @@ filter_cache_send(ngx_http_request_t *r)
     r->cached = 1;
     c = r->cache;
 
-    if (c->header_start == c->body_start) {
-        r->http_version = NGX_HTTP_VERSION_9;
-        return ngx_http_cache_send(r);
-    }
+    /* if (c->header_start == c->body_start) { */
+    /*     r->http_version = NGX_HTTP_VERSION_9; */
+    /*     return ngx_http_cache_send(r); */
+    /* }  */
 
     /*TODO: process headers*/
     return ngx_http_cache_send(r);
@@ -387,20 +387,27 @@ ngx_http_filter_cache_handler(ngx_http_request_t *r)
 
     switch (ngx_http_test_predicates(r, conf->cache_bypass)) {
     case NGX_ERROR:
+        ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0,
+                      "%s:%d NGX_ERROR", __LINE__, __func__);
         return NGX_ERROR;
 
     case NGX_DECLINED:
+         ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0,
+                       "%s:%d NGX_DECLINED", __LINE__, __func__);
         return cache_miss(r, ctx, 0);
     default: /* NGX_OK */
         break;
     }
 
     if (!(r->method & conf->cache_methods)) {
+        ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0,
+                      "%s:%d NGX_DECLINED", __LINE__, __func__);
         return cache_miss(r, ctx, 0);
-        return NGX_DECLINED;
         }
 
     if (ngx_http_file_cache_new(r) != NGX_OK) {
+        ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0,
+                      "%s:%d NGX_ERROR", __LINE__, __func__);
         return NGX_ERROR;
     }
 
@@ -426,6 +433,7 @@ ngx_http_filter_cache_handler(ngx_http_request_t *r)
 
     if(NGX_HTTP_CACHE_UPDATING == rc) {
         if (conf->cache_use_stale & NGX_HTTP_UPSTREAM_FT_UPDATING) {
+            c->updating = 1;
             rc = NGX_OK;
         } else {
             rc = NGX_HTTP_CACHE_STALE;
@@ -435,13 +443,22 @@ ngx_http_filter_cache_handler(ngx_http_request_t *r)
     switch (rc) {
 
     case NGX_OK:
+        ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0,
+                      "%s:%d NGX_OK", __func__, __LINE__);
         return filter_cache_send(r);
 
         break;
     case NGX_HTTP_CACHE_STALE:
+        ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0,
+                      "%s:%d NGX_HTTP_CACHE_STALE", __func__, __LINE__);
+        break;
     case NGX_DECLINED:
+        ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0,
+                      "%s:%d NGX_DECLINED", __func__, __LINE__);
         break;
     case NGX_HTTP_CACHE_SCARCE:
+        ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0,
+                      "%s:%d NGX_HTTP_CACHE_SCARCE", __func__, __LINE__);
         return cache_miss(r, ctx, 0);
         break;
     case NGX_AGAIN:
@@ -449,6 +466,8 @@ ngx_http_filter_cache_handler(ngx_http_request_t *r)
     case NGX_ERROR:
         return NGX_ERROR;
     default:
+        ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0,
+                      "%s:%d default", __func__, __LINE__);
         /*????*/
         break;
     }
@@ -494,14 +513,11 @@ ngx_http_filter_cache_header_filter(ngx_http_request_t *r)
 
     now = ngx_time();
 
-    valid = r->cache->valid_sec;
-
-    if (valid == 0) {
-        valid = ngx_http_file_cache_valid(conf->cache_valid,
-                                          r->headers_out.status);
-        if (valid) {
-            r->cache->valid_sec = now + valid;
-        }
+    valid = 0;
+    valid = ngx_http_file_cache_valid(conf->cache_valid,
+                                      r->headers_out.status);
+    if (valid) {
+        r->cache->valid_sec = now + valid;
     }
 
      ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0,
@@ -596,6 +612,7 @@ ngx_http_filter_cache_body_filter(ngx_http_request_t *r, ngx_chain_t *in)
     }
 
     if(chain_contains_last_buffer) {
+        r->cache->updated = 0;
         ngx_http_file_cache_update(r, ctx->tf);
     }
 
