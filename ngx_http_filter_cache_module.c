@@ -476,7 +476,7 @@ ngx_http_filter_cache_header_filter(ngx_http_request_t *r)
 
     if (valid == 0) {
         valid = ngx_http_file_cache_valid(conf->cache_valid,
-                                          r->headers_out.status_n);
+                                          r->headers_out.status);
         if (valid) {
             r->cache->valid_sec = now + valid;
         }
