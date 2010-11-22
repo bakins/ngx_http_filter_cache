@@ -324,7 +324,6 @@ static ngx_int_t cache_miss(ngx_http_request_t *r,  ngx_http_filter_cache_ctx_t 
 static ngx_int_t
 filter_cache_send(ngx_http_request_t *r)
 {
-    ngx_int_t          rc;
     ngx_http_cache_t  *c;
 
     r->cached = 1;
@@ -356,7 +355,7 @@ ngx_http_filter_cache_handler(ngx_http_request_t *r)
         return NGX_ERROR;
     }
 
-    ctx= ngx_http_get_indexed_variable(r, lcf->index);
+    ctx= ngx_http_get_indexed_variable(r, conf->index);
 
     if (vv == NULL || vv->not_found || vv->len == 0) {
         ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
