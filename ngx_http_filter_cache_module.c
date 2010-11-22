@@ -355,7 +355,7 @@ ngx_http_filter_cache_handler(ngx_http_request_t *r)
         return NGX_ERROR;
     }
 
-    ctx= ngx_http_get_indexed_variable(r, conf->index);
+    vv = ngx_http_get_indexed_variable(r, conf->index);
 
     if (vv == NULL || vv->not_found || vv->len == 0) {
         ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
