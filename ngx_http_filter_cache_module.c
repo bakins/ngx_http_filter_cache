@@ -325,18 +325,86 @@ static ngx_int_t
 filter_cache_send(ngx_http_request_t *r)
 {
     ngx_http_cache_t  *c;
-
-    r->headers_out.status = 200;
+    u_char *raw;
+    int flag = 0;
+    ngx_table_elt_t *h;
+    ngx_str_t key,value;
 
     r->cached = 1;
     c = r->cache;
 
-    /* if (c->header_start == c->body_start) { */
-    /*     r->http_version = NGX_HTTP_VERSION_9; */
-    /*     return ngx_http_cache_send(r); */
-    /* }  */
+    if (c->header_start == c->body_start) {
+        r->http_version = NGX_HTTP_VERSION_9;
+        return ngx_http_cache_send(r);
+    }
+    r->headers_out.content_length_n = c->length - c->body_start;
 
-    /*TODO: process headers*/
+    /* Headers */
+    /* Headers that arent' in the table */
+    /* Status */
+    raw = (u_char *)(c->buf->start + c->header_start);
+    ngx_memcpy((void *)(&r->headers_out.status), (void *)raw, sizeof(ngx_int_t));
+    raw += sizeof(ngx_int_t);
+
+    /* Content Type */
+    key.data = raw;
+    while ( *raw != '\0' ) {
+        raw++;
+    }
+    key.len = raw - key.data;
+    r->headers_out.content_type.data = key.data;
+    r->headers_out.content_type.len = key.len;
+    r->headers_out.content_type_len = key.len;
+    r->headers_out.content_type_lowcase = ngx_pnalloc(r->pool, key.len);
+    if (r->headers_out.content_type_lowcase == NULL ) {
+        return NGX_HTTP_INTERNAL_SERVER_ERROR;
+    }
+    ngx_strlow(r->headers_out.content_type_lowcase, key.data, key.len);
+    r->headers_out.content_type_hash = ngx_hash_key_lc(key.data, key.len);
+    raw++;
+
+    /* Charset */
+    key.data = raw;
+    while ( *raw != '\0' ) {
+        raw++;
+    }
+    key.len = raw - key.data;
+    r->headers_out.charset.data = key.data;
+    r->headers_out.charset.len = key.len;
+    raw++;
+
+    /* Stuff from the Table */
+    key.data = raw;
+    while( raw < c->buf->start + c->body_start ) {
+        if ( *raw == '\0' ) {
+            if ( flag == 0 ) {
+                flag = 1;
+                key.len = raw - key.data;
+                value.data = raw + 1;
+            }
+            else {
+                flag = 0;
+                value.len = raw - value.data;
+                /* all this crap pushes a header */
+                h = ngx_list_push(&r->headers_out.headers);
+                if ( h == NULL ) {
+                    return NGX_HTTP_INTERNAL_SERVER_ERROR;
+                }
+                h->key.len = key.len;
+                h->key.data = key.data;
+                h->hash = ngx_hash_key_lc(key.data, key.len);
+                h->value.len = value.len;
+                h->value.data = value.data;
+                if((h->lowcase_key = ngx_pnalloc(r->pool, h->key.len +1)) == NULL) {
+                    return NGX_HTTP_INTERNAL_SERVER_ERROR;
+                }
+                ngx_strlow(h->lowcase_key, h->key.data, h->key.len);
+                key.data = raw + 1;
+            }
+        }
+        raw++;
+    }
+
     return ngx_http_cache_send(r);
 }
 
@@ -461,6 +529,9 @@ ngx_http_filter_cache_header_filter(ngx_http_request_t *r)
     ngx_temp_file_t *tf;
     ngx_chain_t   out;
     ssize_t offset;
+    ngx_list_part_t *part;
+    ngx_table_elt_t *h;
+    ngx_uint_t i;
 
     conf = ngx_http_get_module_loc_conf(r, ngx_http_filter_cache_module);
 
@@ -519,12 +590,68 @@ ngx_http_filter_cache_header_filter(ngx_http_request_t *r)
     ctx->buffer.last_buf = 1;
 
     ctx->buffer.pos += r->cache->header_start;
-    ctx->buffer.last = ctx->buffer.pos;
 
     r->cache->last_modified = r->headers_out.last_modified_time;
     r->cache->date = now;
 
-    /*add in headers starting at ctx->buffer.pos. update ctx->buffer.last and r->cache->body_start when done*/
+    ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0, __FILE__"adding headers");
+    /* Headers */
+
+    /* Headers taht aren't in teh table for some reason */
+    /* Status */
+    ngx_memcpy((void *)(ctx->buffer.pos), (void *)(&r->headers_out.status), sizeof(ngx_int_t) );
+    ctx->buffer.pos += sizeof(ngx_int_t);
+
+    /* Content Type */
+    if ( r->headers_out.content_type.data ) {
+        ngx_cpystrn( ctx->buffer.pos, r->headers_out.content_type.data, r->headers_out.content_type.len + 1 );
+        ctx->buffer.pos += r->headers_out.content_type.len + 1;
+    }
+    else {
+        *ctx->buffer.pos = (u_char)'\0';
+        ctx->buffer.pos++;
+    }
+
+    /* Charset */
+    if ( r->headers_out.charset.data ) {
+        ngx_cpystrn( ctx->buffer.pos, r->headers_out.charset.data, r->headers_out.charset.len + 1 );
+        ctx->buffer.pos += r->headers_out.charset.len + 1;
+    }
+    else {
+        *ctx->buffer.pos = (u_char)'\0';
+        ctx->buffer.pos++;
+    }
+
+    /* Everything From the Table */
+    part = &r->headers_out.headers.part;
+    h = part->elts;
+    for (i=0; /* void */; i++) {
+        if ( i >= part->nelts || !part->nelts ) {
+            if ( part->next == NULL ) {
+                ctx->cacheable = 1;
+                break;
+            }
+            part = part->next;
+            h = part->elts;
+            i = 0;
+        }
+        /* this blows up, unterminated strings?
+        ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0, __FILE__" header => %s : %s", h[i].key.data, h[i].value.data);
+        */
+
+        if ( (ngx_uint_t)(h[i].key.len + h[i].value.len + 4) > (ngx_uint_t)(ctx->buffer.last - ctx->buffer.pos) ) {
+            ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, __FILE__" ran out of buffer while copying headers, not caching");
+            ctx->cacheable = 0;
+            break;
+        }
+
+        ngx_cpystrn( ctx->buffer.pos, h[i].key.data, h[i].key.len + 1 );
+        ctx->buffer.pos += h[i].key.len + 1;
+
+        ngx_cpystrn( ctx->buffer.pos, h[i].value.data, h[i].value.len + 1 );
+        ctx->buffer.pos += h[i].value.len + 1;
+    }
+    ctx->buffer.last = ctx->buffer.pos;
 
     r->cache->body_start = (u_short) (ctx->buffer.pos - ctx->buffer.start);
     ngx_http_file_cache_set_header(r, ctx->buffer.start);
@@ -539,7 +666,6 @@ ngx_http_filter_cache_header_filter(ngx_http_request_t *r)
     ctx->tf = tf;
 
     r->cache = ctx->orig_cache;
-    ctx->cacheable = 1;
     return ngx_http_next_header_filter(r);
 }
 
