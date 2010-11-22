@@ -17,7 +17,7 @@ static ngx_int_t ngx_http_filter_cache_body_filter(ngx_http_request_t *r, ngx_ch
 
 /*config */
 typedef struct {
-    size_t                   buffer_size;
+    size_t                     buffer_size;
     ngx_int_t                index;
     ngx_http_complex_value_t cache_key;
     ngx_shm_zone_t *cache;
@@ -326,15 +326,13 @@ filter_cache_send(ngx_http_request_t *r)
 {
     ngx_http_cache_t  *c;
 
-    r->headers_out.status = 200;
-
     r->cached = 1;
     c = r->cache;
 
-    /* if (c->header_start == c->body_start) { */
-    /*     r->http_version = NGX_HTTP_VERSION_9; */
-    /*     return ngx_http_cache_send(r); */
-    /* }  */
+    if (c->header_start == c->body_start) {
+        r->http_version = NGX_HTTP_VERSION_9;
+        return ngx_http_cache_send(r);
+    }
 
     /*TODO: process headers*/
     return ngx_http_cache_send(r);
@@ -356,6 +354,8 @@ ngx_http_filter_cache_handler(ngx_http_request_t *r)
 
     if(ctx) {
         /*loop detected??*/
+        ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
+                      "cache loop in " __FILE__);
         return NGX_ERROR;
     }
 
@@ -447,6 +447,7 @@ ngx_http_filter_cache_handler(ngx_http_request_t *r)
         /*????*/
         break;
     }
+
     return cache_miss(r, ctx, 1);
 }
 
