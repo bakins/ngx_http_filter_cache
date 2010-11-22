@@ -276,7 +276,6 @@ ngx_http_filter_cache(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
     ngx_http_filter_cache_conf_t *lcf;
     ngx_http_core_loc_conf_t  *core_conf;
     ngx_str_t  *value;
-    ngx_http_variable_value_t      *vv;
 
     value = cf->args->elts;
 
@@ -314,7 +313,7 @@ static ngx_int_t cache_miss(ngx_http_request_t *r,  ngx_http_filter_cache_ctx_t 
         r->cache = ctx->orig_cache;
 
         if(set_filter) {
-            ngx_http_set_ctx(r, ctx, ngx_http_cache_filter_module);
+            ngx_http_set_ctx(r, ctx, ngx_http_filter_cache_module);
         }
     }
 
