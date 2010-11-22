@@ -326,13 +326,15 @@ filter_cache_send(ngx_http_request_t *r)
 {
     ngx_http_cache_t  *c;
 
+    r->headers_out.status = 200;
+
     r->cached = 1;
     c = r->cache;
 
-    if (c->header_start == c->body_start) {
-        r->http_version = NGX_HTTP_VERSION_9;
-        return ngx_http_cache_send(r);
-    }
+    /* if (c->header_start == c->body_start) { */
+    /*     r->http_version = NGX_HTTP_VERSION_9; */
+    /*     return ngx_http_cache_send(r); */
+    /* }  */
 
     /*TODO: process headers*/
     return ngx_http_cache_send(r);
@@ -430,7 +432,6 @@ ngx_http_filter_cache_handler(ngx_http_request_t *r)
 
     case NGX_OK:
         return filter_cache_send(r);
-
         break;
     case NGX_HTTP_CACHE_STALE:
         break;
