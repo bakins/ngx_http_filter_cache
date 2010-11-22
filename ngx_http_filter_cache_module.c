@@ -17,8 +17,8 @@ static ngx_int_t ngx_http_filter_cache_body_filter(ngx_http_request_t *r, ngx_ch
 
 /*config */
 typedef struct {
-    size_t                           buffer_size;
-    ngx_int_t                  index;
+    size_t                   buffer_size;
+    ngx_int_t                index;
     ngx_http_complex_value_t cache_key;
     ngx_shm_zone_t *cache;
     ngx_uint_t cache_min_uses;
