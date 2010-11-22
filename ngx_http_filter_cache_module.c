@@ -326,6 +326,11 @@ filter_cache_send(ngx_http_request_t *r)
 {
     ngx_http_cache_t  *c;
 
+    ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0,
+                  "%s: HIT", __func__);
+
+    r->headers_out.status = 200;
+
     r->cached = 1;
     c = r->cache;
 
@@ -438,6 +443,8 @@ ngx_http_filter_cache_handler(ngx_http_request_t *r)
         /*????*/
         break;
     }
+    ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0,
+                  "%s: MISS", __func__);
 
     return cache_miss(r, ctx, 1);
 }
@@ -453,7 +460,7 @@ ngx_http_filter_cache_header_filter(ngx_http_request_t *r)
     ssize_t offset;
 
     ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0,
-                  "%s: start", __func__);
+                  "%s: start: %d", __func__, r->headers_out.status);
 
     conf = ngx_http_get_module_loc_conf(r, ngx_http_filter_cache_module);
 
@@ -487,6 +494,9 @@ ngx_http_filter_cache_header_filter(ngx_http_request_t *r)
             r->cache->valid_sec = now + valid;
         }
     }
+
+     ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0,
+                   "%s: valid: %d", __func__, valid);
 
     if (!valid) {
         r->cache = ctx->orig_cache;
