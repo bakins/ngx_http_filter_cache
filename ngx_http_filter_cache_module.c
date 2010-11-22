@@ -606,7 +606,7 @@ ngx_http_filter_cache_header_filter(ngx_http_request_t *r)
     /* Content Type */
     if ( r->headers_out.content_type.data ) {
         p = r->headers_out.content_type.data;
-        while ( *p != ';' && p - r->headers_out.content_type.data < r->headers_out.content_type.len ) {
+        while ( *p != ';' && p - r->headers_out.content_type.data < (ngx_int_t)r->headers_out.content_type.len ) {
             p++;
         }
         if ( *p == ';' ) {
