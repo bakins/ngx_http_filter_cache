@@ -325,7 +325,7 @@ static ngx_int_t
 filter_cache_send(ngx_http_request_t *r)
 {
     ngx_http_cache_t  *c;
-    u_char *raw;
+    u_char *raw,*p,*hs;
     int flag = 0;
     ngx_table_elt_t *h;
     ngx_str_t key,value;
@@ -342,16 +342,19 @@ filter_cache_send(ngx_http_request_t *r)
     /* Headers */
     /* Headers that arent' in the table */
     /* Status */
-    raw = (u_char *)(c->buf->start + c->header_start);
+    hs = raw = (u_char *)(c->buf->start + c->header_start);
     ngx_memcpy((void *)(&r->headers_out.status), (void *)raw, sizeof(ngx_int_t));
     raw += sizeof(ngx_int_t);
 
     /* Content Type */
     key.data = raw;
-    while ( *raw != '\0' ) {
-        raw++;
+    p = memchr((void *)raw, '\0', c->length - c->header_start);
+    if ( !p ) {
+        return NGX_HTTP_INTERNAL_SERVER_ERROR;
     }
-    key.len = raw - key.data;
+    key.len = p - raw;
+    raw = p + 1;
+
     r->headers_out.content_type.data = key.data;
     r->headers_out.content_type.len = key.len;
     r->headers_out.content_type_len = key.len;
@@ -361,17 +364,14 @@ filter_cache_send(ngx_http_request_t *r)
     }
     ngx_strlow(r->headers_out.content_type_lowcase, key.data, key.len);
     r->headers_out.content_type_hash = ngx_hash_key_lc(key.data, key.len);
-    raw++;
 
     /* Charset */
     key.data = raw;
-    while ( *raw != '\0' ) {
-        raw++;
-    }
-    key.len = raw - key.data;
+    p = memchr( (void *)raw, '\0', c->length - c->header_start - ( raw - hs ));
+    key.len = p - raw;
+    raw = p + 1;
     r->headers_out.charset.data = key.data;
     r->headers_out.charset.len = key.len;
-    raw++;
 
     /* Stuff from the Table */
     key.data = raw;
@@ -612,8 +612,6 @@ ngx_http_filter_cache_header_filter(ngx_http_request_t *r)
             len = p - r->headers_out.content_type.data;
             ngx_cpystrn( ctx->buffer.pos, r->headers_out.content_type.data, len );
             ctx->buffer.pos += len;
-            *ctx->buffer.pos = '\0';
-            ctx->buffer.pos++;
         }
         else {
             ngx_cpystrn( ctx->buffer.pos, r->headers_out.content_type.data, r->headers_out.content_type.len + 1 );
