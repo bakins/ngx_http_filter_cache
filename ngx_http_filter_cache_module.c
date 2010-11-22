@@ -524,7 +524,7 @@ ngx_http_filter_cache_header_filter(ngx_http_request_t *r)
 
     /*write to temp file*/
     ctx->buffer.pos =  ctx->buffer.start;
-    out.buf = ctx->buffer;
+    out.buf = &ctx->buffer;
     out.next = NULL;
     offset = ngx_write_chain_to_temp_file(tf, &out);
     tf->offset += offset;
