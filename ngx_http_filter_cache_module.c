@@ -197,7 +197,7 @@ static ngx_path_init_t  ngx_http_filter_cache_temp_path = {
 };
 
 static char *
-ngx_http_url_cache_merge_conf(ngx_conf_t *cf, void *parent, void *child)
+ngx_http_filter_cache_merge_conf(ngx_conf_t *cf, void *parent, void *child)
 {
     ngx_http_filter_cache_conf_t *prev = parent;
     ngx_http_filter_cache_conf_t *conf = child;
@@ -273,7 +273,7 @@ ngx_http_url_cache_merge_conf(ngx_conf_t *cf, void *parent, void *child)
 static char *
 ngx_http_filter_cache(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 {
-    ngx_http_filter_cache_conf_t *lcf;
+    ngx_http_filter_cache_conf_t *lcf = conf;
     ngx_http_core_loc_conf_t  *core_conf;
     ngx_str_t  *value;
 
@@ -444,7 +444,6 @@ ngx_http_filter_cache_header_filter(ngx_http_request_t *r)
 {
     ngx_http_filter_cache_ctx_t *ctx;
     ngx_http_filter_cache_conf_t *conf;
-    ngx_int_t          rc;
     time_t  now, valid;
     ngx_temp_file_t *tf;
     ngx_chain_t   out;
