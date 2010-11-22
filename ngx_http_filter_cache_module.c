@@ -326,9 +326,6 @@ filter_cache_send(ngx_http_request_t *r)
 {
     ngx_http_cache_t  *c;
 
-    ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0,
-                  "%s: HIT", __func__);
-
     r->headers_out.status = 200;
 
     r->cached = 1;
@@ -352,9 +349,6 @@ ngx_http_filter_cache_handler(ngx_http_request_t *r)
     ngx_http_cache_t  *c;
     ngx_str_t                    *key;
     ngx_int_t          rc;
-
-    ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0,
-                  "%s: start", __func__);
 
     conf = ngx_http_get_module_loc_conf(r, ngx_http_filter_cache_module);
 
@@ -387,27 +381,19 @@ ngx_http_filter_cache_handler(ngx_http_request_t *r)
 
     switch (ngx_http_test_predicates(r, conf->cache_bypass)) {
     case NGX_ERROR:
-        ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0,
-                      "%s:%d NGX_ERROR", __LINE__, __func__);
         return NGX_ERROR;
 
     case NGX_DECLINED:
-         ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0,
-                       "%s:%d NGX_DECLINED", __LINE__, __func__);
         return cache_miss(r, ctx, 0);
     default: /* NGX_OK */
         break;
     }
 
     if (!(r->method & conf->cache_methods)) {
-        ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0,
-                      "%s:%d NGX_DECLINED", __LINE__, __func__);
         return cache_miss(r, ctx, 0);
         }
 
     if (ngx_http_file_cache_new(r) != NGX_OK) {
-        ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0,
-                      "%s:%d NGX_ERROR", __LINE__, __func__);
         return NGX_ERROR;
     }
 
@@ -443,22 +429,14 @@ ngx_http_filter_cache_handler(ngx_http_request_t *r)
     switch (rc) {
 
     case NGX_OK:
-        ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0,
-                      "%s:%d NGX_OK", __func__, __LINE__);
         return filter_cache_send(r);
 
         break;
     case NGX_HTTP_CACHE_STALE:
-        ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0,
-                      "%s:%d NGX_HTTP_CACHE_STALE", __func__, __LINE__);
         break;
     case NGX_DECLINED:
-        ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0,
-                      "%s:%d NGX_DECLINED", __func__, __LINE__);
         break;
     case NGX_HTTP_CACHE_SCARCE:
-        ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0,
-                      "%s:%d NGX_HTTP_CACHE_SCARCE", __func__, __LINE__);
         return cache_miss(r, ctx, 0);
         break;
     case NGX_AGAIN:
@@ -466,14 +444,9 @@ ngx_http_filter_cache_handler(ngx_http_request_t *r)
     case NGX_ERROR:
         return NGX_ERROR;
     default:
-        ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0,
-                      "%s:%d default", __func__, __LINE__);
         /*????*/
         break;
     }
-    ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0,
-                  "%s: MISS", __func__);
-
     return cache_miss(r, ctx, 1);
 }
 
@@ -487,9 +460,6 @@ ngx_http_filter_cache_header_filter(ngx_http_request_t *r)
     ngx_chain_t   out;
     ssize_t offset;
 
-    ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0,
-                  "%s: start: %d", __func__, r->headers_out.status);
-
     conf = ngx_http_get_module_loc_conf(r, ngx_http_filter_cache_module);
 
     ctx = ngx_http_get_module_ctx(r, ngx_http_filter_cache_module);
@@ -497,9 +467,6 @@ ngx_http_filter_cache_header_filter(ngx_http_request_t *r)
     if(!ctx) {
         return ngx_http_next_header_filter(r);
     }
-
-    ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0,
-                  "%s: key: %s", __func__, ctx->key.data);
 
     if(r->cache != ctx->cache) {
         ctx->orig_cache = r->cache;
@@ -519,9 +486,6 @@ ngx_http_filter_cache_header_filter(ngx_http_request_t *r)
     if (valid) {
         r->cache->valid_sec = now + valid;
     }
-
-     ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0,
-                   "%s: valid: %d", __func__, valid);
 
     if (!valid) {
         r->cache = ctx->orig_cache;
@@ -585,10 +549,6 @@ ngx_http_filter_cache_body_filter(ngx_http_request_t *r, ngx_chain_t *in)
     ssize_t offset;
     int chain_contains_last_buffer = 0;
     ngx_chain_t *chain_link;
-
-    ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0,
-                  "%s: start", __func__);
-
 
     conf = ngx_http_get_module_loc_conf(r, ngx_http_filter_cache_module);
     ctx = ngx_http_get_module_ctx(r, ngx_http_filter_cache_module);
