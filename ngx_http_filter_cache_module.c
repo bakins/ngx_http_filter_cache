@@ -392,8 +392,8 @@ ngx_http_filter_cache_handler(ngx_http_request_t *r)
     if (key == NULL) {
         return NGX_ERROR;
     }
-    key.data = ctx->key.data;
-    key.len = ctx->key.len;
+    key->data = ctx->key.data;
+    key->len = ctx->key.len;
 
     ngx_http_file_cache_create_key(r);
 
