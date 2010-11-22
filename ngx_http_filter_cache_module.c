@@ -146,7 +146,7 @@ static ngx_http_module_t  ngx_http_filter_cache_module_ctx = {
 };
 
 
-ngx_module_t  ngx_http_url_cache_module = {
+ngx_module_t  ngx_http_filter_cache_module = {
     NGX_MODULE_V1,
     &ngx_http_filter_cache_module_ctx,  /* module context */
     ngx_http_filter_cache_commands,            /* module directives */
