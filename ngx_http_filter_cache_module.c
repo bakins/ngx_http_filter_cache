@@ -608,7 +608,8 @@ ngx_http_filter_cache_header_filter(ngx_http_request_t *r)
     if ( r->headers_out.content_type.data ) {
         p = memchr((void *)r->headers_out.content_type.data, ';', r->headers_out.content_type.len );
         if ( p ) {
-            len = r->headers_out.content_type.data - p;
+            ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0, __FILE__" adding content type");
+            len = p - r->headers_out.content_type.data;
             ngx_cpystrn( ctx->buffer.pos, r->headers_out.content_type.data, len );
             ctx->buffer.pos += len;
             *ctx->buffer.pos = '\0';
@@ -626,6 +627,7 @@ ngx_http_filter_cache_header_filter(ngx_http_request_t *r)
 
     /* Charset */
     if ( r->headers_out.charset.data ) {
+        ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0, __FILE__" adding charset");
         ngx_cpystrn( ctx->buffer.pos, r->headers_out.charset.data, r->headers_out.charset.len + 1 );
         ctx->buffer.pos += r->headers_out.charset.len + 1;
     }
