@@ -607,7 +607,7 @@ ngx_http_filter_cache_header_filter(ngx_http_request_t *r)
     /* Content Type */
     if ( r->headers_out.content_type.data ) {
         p = memchr((void *)r->headers_out.content_type.data, ';', r->headers_out.content_type.len );
-        if ( *p == ';' ) {
+        if ( p ) {
             len = r->headers_out.content_type.data - p;
             ngx_cpystrn( ctx->buffer.pos, r->headers_out.content_type.data, len );
             ctx->buffer.pos += len;
