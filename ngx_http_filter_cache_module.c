@@ -63,7 +63,7 @@ static ngx_conf_bitmask_t  ngx_http_filter_cache_next_upstream_masks[] = {
 static ngx_command_t  ngx_http_filter_cache_commands[] = {
 
     { ngx_string("filter_cache"),
-      NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
+      NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_HTTP_LIF_CONF|NGX_CONF_TAKE1,
       ngx_http_filter_cache,
       NGX_HTTP_LOC_CONF_OFFSET,
       0,
@@ -418,6 +418,10 @@ ngx_http_filter_cache_handler(ngx_http_request_t *r)
     ngx_str_t                    *key;
     ngx_int_t          rc;
 
+     if(r->parent) {
+        ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0, __FILE__" r->parent");
+    }
+
     conf = ngx_http_get_module_loc_conf(r, ngx_http_filter_cache_module);
 
     ctx = ngx_http_get_module_ctx(r, ngx_http_filter_cache_module);
@@ -489,7 +493,6 @@ ngx_http_filter_cache_handler(ngx_http_request_t *r)
 
     if(NGX_HTTP_CACHE_UPDATING == rc) {
         if (conf->cache_use_stale & NGX_HTTP_UPSTREAM_FT_UPDATING) {
-            c->updating = 1;
             rc = NGX_OK;
         } else {
             rc = NGX_HTTP_CACHE_STALE;
@@ -534,6 +537,11 @@ ngx_http_filter_cache_header_filter(ngx_http_request_t *r)
     ngx_uint_t i;
     u_char *p;
     size_t len;
+
+     if(r->parent) {
+        ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0, __FILE__" r->parent");
+    }
+
 
     conf = ngx_http_get_module_loc_conf(r, ngx_http_filter_cache_module);
 
@@ -610,8 +618,8 @@ ngx_http_filter_cache_header_filter(ngx_http_request_t *r)
         if ( p ) {
             ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0, __FILE__" adding content type");
             len = p - r->headers_out.content_type.data;
-            ngx_cpystrn( ctx->buffer.pos, r->headers_out.content_type.data, len );
-            ctx->buffer.pos += len;
+            ngx_cpystrn( ctx->buffer.pos, r->headers_out.content_type.data, len + 1);
+            ctx->buffer.pos += len + 1;
         }
         else {
             ngx_cpystrn( ctx->buffer.pos, r->headers_out.content_type.data, r->headers_out.content_type.len + 1 );
@@ -651,17 +659,20 @@ ngx_http_filter_cache_header_filter(ngx_http_request_t *r)
         ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0, __FILE__" header => %s : %s", h[i].key.data, h[i].value.data);
         */
 
-        if ( (ngx_uint_t)(h[i].key.len + h[i].value.len + 4) > (ngx_uint_t)(ctx->buffer.last - ctx->buffer.pos) ) {
-            ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, __FILE__" ran out of buffer while copying headers, not caching");
-            ctx->cacheable = 0;
-            break;
+        if(h[i].key.len && h[i].value.len) {
+            if ( (ngx_uint_t)(h[i].key.len + h[i].value.len + 4) > (ngx_uint_t)(ctx->buffer.last - ctx->buffer.pos) ) {
+                ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, __FILE__" ran out of buffer while copying headers, not caching");
+                ctx->cacheable = 0;
+                break;
+            }
+
+            ngx_cpystrn( ctx->buffer.pos, h[i].key.data, h[i].key.len + 1 );
+            ctx->buffer.pos += h[i].key.len + 1;
+
+            ngx_cpystrn( ctx->buffer.pos, h[i].value.data, h[i].value.len + 1 );
+            ctx->buffer.pos += h[i].value.len + 1;
         }
 
-        ngx_cpystrn( ctx->buffer.pos, h[i].key.data, h[i].key.len + 1 );
-        ctx->buffer.pos += h[i].key.len + 1;
-
-        ngx_cpystrn( ctx->buffer.pos, h[i].value.data, h[i].value.len + 1 );
-        ctx->buffer.pos += h[i].value.len + 1;
     }
     ctx->buffer.last = ctx->buffer.pos;
 
@@ -689,6 +700,10 @@ ngx_http_filter_cache_body_filter(ngx_http_request_t *r, ngx_chain_t *in)
     ssize_t offset;
     int chain_contains_last_buffer = 0;
     ngx_chain_t *chain_link;
+
+    if(r->parent) {
+        ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0, __FILE__" r->parent");
+    }
 
     conf = ngx_http_get_module_loc_conf(r, ngx_http_filter_cache_module);
     ctx = ngx_http_get_module_ctx(r, ngx_http_filter_cache_module);
