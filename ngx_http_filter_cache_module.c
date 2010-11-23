@@ -318,7 +318,8 @@ static ngx_int_t cache_miss(ngx_http_request_t *r,  ngx_http_filter_cache_ctx_t 
         }
     }
 
-    return NGX_HTTP_NOT_FOUND;
+/*    return NGX_HTTP_NOT_FOUND; */
+    return 599;
 }
 
 static ngx_int_t
