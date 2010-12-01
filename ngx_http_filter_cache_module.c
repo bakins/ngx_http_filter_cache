@@ -374,6 +374,25 @@ filter_cache_send(ngx_http_request_t *r)
     r->headers_out.charset.data = key.data;
     r->headers_out.charset.len = key.len;
 
+    /* content encoding */
+    key.data = raw;
+    p = memchr( (void *)raw, '\0', c->length - c->header_start - ( raw - hs ));
+    key.len = p - raw;
+    if(key.len) {
+        /*copied from ngx_http_gzip_static_module.c */
+        h = ngx_list_push(&r->headers_out.headers);
+        if ( h == NULL ) {
+            return NGX_HTTP_INTERNAL_SERVER_ERROR;
+        }
+        ngx_str_set(&h->key, "Content-Encoding");
+        h->hash = 1;
+        h->value.len = key.len;
+        h->value.data = key.data;
+        r->headers_out.content_encoding = h;
+        r->ignore_content_encoding = 1;
+    }
+    raw = p + 1;
+
     /* Stuff from the Table */
     key.data = raw;
     while( raw < c->buf->start + c->body_start ) {
@@ -467,7 +486,7 @@ ngx_http_filter_cache_handler(ngx_http_request_t *r)
 
     if (!(r->method & conf->cache_methods)) {
         return cache_miss(r, ctx, 0);
-        }
+    }
 
     if (ngx_http_file_cache_new(r) != NGX_OK) {
         return NGX_ERROR;
@@ -645,6 +664,18 @@ ngx_http_filter_cache_header_filter(ngx_http_request_t *r)
         ctx->buffer.pos++;
     }
 
+    /* Content Encoding */
+    if ( r->headers_out.content_encoding && r->headers_out.content_encoding->value.len) {
+        ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0, __FILE__" adding content_encoding");
+        ngx_cpystrn( ctx->buffer.pos, r->headers_out.content_encoding->value.data, r->headers_out.content_encoding->value.len + 1 );
+        ctx->buffer.pos += r->headers_out.content_encoding->value.len + 1;
+    }
+    else {
+        *ctx->buffer.pos = (u_char)'\0';
+        ctx->buffer.pos++;
+    }
+
+
     /* Everything From the Table */
     part = &r->headers_out.headers.part;
     h = part->elts;
@@ -663,6 +694,11 @@ ngx_http_filter_cache_header_filter(ngx_http_request_t *r)
         */
 
         if(h[i].key.len && h[i].value.len) {
+            /*is this content encoding?*/
+            if(h[i].value.data == r->headers_out.content_encoding->value.data) {
+                continue;
+            }
+
             if ( (ngx_uint_t)(h[i].key.len + h[i].value.len + 4) > (ngx_uint_t)(ctx->buffer.last - ctx->buffer.pos) ) {
                 ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, __FILE__" ran out of buffer while copying headers, not caching");
                 ctx->cacheable = 0;
