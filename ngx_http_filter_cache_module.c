@@ -695,7 +695,7 @@ ngx_http_filter_cache_header_filter(ngx_http_request_t *r)
 
         if(h[i].key.len && h[i].value.len) {
             /*is this content encoding? This check is very fast, but may not catch it if the header was added wrongly*/
-            if(r->headers_out.content_encoding && (h[i].value.data == r->headers_out.content_encoding->value.data)) {
+            if(r->headers_out.content_encoding && r->headers_out.content_encoding->value.len && (h[i].value.data == r->headers_out.content_encoding->value.data)) {
                 continue;
             }
 
