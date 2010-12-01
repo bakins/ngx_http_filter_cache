@@ -419,8 +419,9 @@ ngx_http_filter_cache_handler(ngx_http_request_t *r)
     ngx_str_t                    *key;
     ngx_int_t          rc;
 
-     if(r->parent) {
-        ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0, __FILE__" r->parent");
+    if(r != r->main) {
+        /*we don't currently serve subrequests*/
+        return cache_miss(r, NULL, 0);
     }
 
     conf = ngx_http_get_module_loc_conf(r, ngx_http_filter_cache_module);
@@ -539,8 +540,9 @@ ngx_http_filter_cache_header_filter(ngx_http_request_t *r)
     u_char *p;
     size_t len;
 
-     if(r->parent) {
-        ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0, __FILE__" r->parent");
+    if(r != r->main) {
+        /*just skip as we got headers in main*/
+        return ngx_http_next_header_filter(r);
     }
 
 
@@ -690,6 +692,7 @@ ngx_http_filter_cache_header_filter(ngx_http_request_t *r)
     ctx->tf = tf;
 
     r->cache = ctx->orig_cache;
+    r->main_filter_need_in_memory = 1;
     return ngx_http_next_header_filter(r);
 }
 
@@ -702,12 +705,8 @@ ngx_http_filter_cache_body_filter(ngx_http_request_t *r, ngx_chain_t *in)
     int chain_contains_last_buffer = 0;
     ngx_chain_t *chain_link;
 
-    if(r->parent) {
-        ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0, __FILE__" r->parent");
-    }
-
     conf = ngx_http_get_module_loc_conf(r, ngx_http_filter_cache_module);
-    ctx = ngx_http_get_module_ctx(r, ngx_http_filter_cache_module);
+    ctx = ngx_http_get_module_ctx(r->main, ngx_http_filter_cache_module);
 
     if (!ctx || !ctx->cacheable) {
         return ngx_http_next_body_filter(r, in);
