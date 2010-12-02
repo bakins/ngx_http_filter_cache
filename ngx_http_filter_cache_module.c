@@ -395,6 +395,8 @@ filter_cache_send(ngx_http_request_t *r)
 
     /* Stuff from the Table */
     key.data = raw;
+    value.data = NULL;
+    value.len = 0;
     while( raw < c->buf->start + c->body_start ) {
         if ( *raw == '\0' ) {
             if ( flag == 0 ) {
