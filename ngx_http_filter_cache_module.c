@@ -395,6 +395,7 @@ filter_cache_send(ngx_http_request_t *r)
 
     /* Stuff from the Table */
     key.data = raw;
+    key.len = 0;
     value.data = NULL;
     value.len = 0;
     while( raw < c->buf->start + c->body_start ) {
