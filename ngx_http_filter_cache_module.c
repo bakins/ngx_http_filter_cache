@@ -313,7 +313,7 @@ static ngx_int_t cache_miss(ngx_http_request_t *r,  ngx_http_filter_cache_ctx_t 
     if(ctx) {
         r->cache = ctx->orig_cache;
 
-        if(set_filter) {
+        if(set_filter && !r->header_only) {
             ngx_http_set_ctx(r, ctx, ngx_http_filter_cache_module);
         }
     }
@@ -444,6 +444,12 @@ ngx_http_filter_cache_handler(ngx_http_request_t *r)
     if(r != r->main) {
         /*we don't currently serve subrequests*/
         return cache_miss(r, NULL, 0);
+    }
+
+    rc = ngx_http_discard_request_body(r);
+
+    if (rc != NGX_OK && rc != NGX_AGAIN) {
+        return rc;
     }
 
     conf = ngx_http_get_module_loc_conf(r, ngx_http_filter_cache_module);
