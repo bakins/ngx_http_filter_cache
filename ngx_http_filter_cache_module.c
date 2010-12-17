@@ -6,6 +6,7 @@ ngx_module_t  ngx_http_filter_cache_module;
 
 static ngx_http_output_header_filter_pt  ngx_http_next_header_filter;
 static ngx_http_output_body_filter_pt    ngx_http_next_body_filter;
+static ngx_str_t  ngx_http_gzip_ok_string = ngx_string("gzip_ok");
 static ngx_str_t ngx_http_filter_cache_key = ngx_string("filter_cache_key");
 static ngx_int_t ngx_http_filter_cache_init(ngx_conf_t *cf);
 static ngx_int_t ngx_http_filter_cache_handler(ngx_http_request_t *r);
@@ -14,6 +15,9 @@ static char *ngx_http_filter_cache_merge_conf(ngx_conf_t *cf, void *parent, void
 static char *ngx_http_filter_cache(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
 static ngx_int_t ngx_http_filter_cache_header_filter(ngx_http_request_t *r);
 static ngx_int_t ngx_http_filter_cache_body_filter(ngx_http_request_t *r, ngx_chain_t *in);
+static ngx_int_t ngx_http_filter_cache_add_variables(ngx_conf_t *cf);
+static ngx_int_t ngx_http_gzip_ok_variable(ngx_http_request_t *r, ngx_http_variable_value_t *v, uintptr_t data);
+
 
 /*config */
 typedef struct {
@@ -136,7 +140,7 @@ static ngx_command_t  ngx_http_filter_cache_commands[] = {
 };
 
 static ngx_http_module_t  ngx_http_filter_cache_module_ctx = {
-    NULL,                                  /* preconfiguration */
+    ngx_http_filter_cache_add_variables, /* preconfiguration */
     ngx_http_filter_cache_init,         /* postconfiguration */
     NULL,                                  /* create main configuration */
     NULL,                                  /* init main configuration */
@@ -161,6 +165,45 @@ ngx_module_t  ngx_http_filter_cache_module = {
     NULL,                                  /* exit master */
     NGX_MODULE_V1_PADDING
 };
+
+static ngx_int_t
+ngx_http_filter_cache_add_variables(ngx_conf_t *cf)
+{
+    ngx_http_variable_t  *var;
+
+    var = ngx_http_add_variable(cf, &ngx_http_gzip_ok_string, NGX_HTTP_VAR_NOHASH);
+
+    if (var == NULL) {
+        return NGX_ERROR;
+    }
+
+    var->get_handler = ngx_http_gzip_ok_variable;
+
+    return NGX_OK;
+}
+
+static ngx_int_t
+ngx_http_gzip_ok_variable(ngx_http_request_t *r, ngx_http_variable_value_t *v, uintptr_t data)
+{
+    char ok = '0';
+
+    v->valid = 1;
+    v->no_cacheable = 0;
+    v->not_found = 0;
+
+    if (!r->gzip_tested) {
+        ngx_http_gzip_ok(r);
+    }
+    if (r->gzip_ok) {
+        ok = '1';
+    }
+
+    v->data = ngx_pnalloc(r->pool, 2);
+    v->data[0] = ok;
+    v->data[1] = '\0';
+    v->len = 1;
+    return NGX_OK;
+}
 
 static ngx_int_t
 ngx_http_filter_cache_init(ngx_conf_t *cf)
@@ -245,7 +288,7 @@ ngx_http_filter_cache_merge_conf(ngx_conf_t *cf, void *parent, void *child)
 
     if (conf->no_cache && conf->cache_bypass == NULL) {
         ngx_log_error(NGX_LOG_WARN, cf->log, 0,
-                      "\"filter_cache_disable\" should be used together with \"filter_cache_bypass\"");
+                      "\"filter_cache_disable\" should generally be used together with \"filter_cache_bypass\"");
     }
 
     ngx_conf_merge_ptr_value(conf->cache_valid,
@@ -307,7 +350,7 @@ ngx_http_filter_cache(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
     return NGX_CONF_OK;
 }
 
-
+/* return 598 when we are not goign to attempt to cache this, 599 if it was just a cache miss of some type */
 static ngx_int_t cache_miss(ngx_http_request_t *r,  ngx_http_filter_cache_ctx_t *ctx, int set_filter)
 {
     if(ctx) {
@@ -315,11 +358,10 @@ static ngx_int_t cache_miss(ngx_http_request_t *r,  ngx_http_filter_cache_ctx_t 
 
         if(set_filter && !r->header_only) {
             ngx_http_set_ctx(r, ctx, ngx_http_filter_cache_module);
+            return 599;
         }
     }
-
-/*    return NGX_HTTP_NOT_FOUND; */
-    return 599;
+    return 598;
 }
 
 static ngx_int_t
@@ -434,7 +476,7 @@ filter_cache_send(ngx_http_request_t *r)
 static ngx_int_t
 ngx_http_filter_cache_handler(ngx_http_request_t *r)
 {
-    ngx_http_filter_cache_ctx_t *ctx;
+    ngx_http_filter_cache_ctx_t *ctx = NULL;
     ngx_http_filter_cache_conf_t *conf;
     ngx_http_variable_value_t      *vv;
     ngx_http_cache_t  *c;
@@ -446,13 +488,27 @@ ngx_http_filter_cache_handler(ngx_http_request_t *r)
         return cache_miss(r, NULL, 0);
     }
 
+    conf = ngx_http_get_module_loc_conf(r, ngx_http_filter_cache_module);
+
+    switch (ngx_http_test_predicates(r, conf->cache_bypass)) {
+    case NGX_ERROR:
+        ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, __FILE__" ngx_http_test_predicates returned an error for bypass");
+        return NGX_ERROR;
+    case NGX_DECLINED:
+        return cache_miss(r, NULL, 0);
+    default: /* NGX_OK */
+        break;
+    }
+
+    if (!(r->method & conf->cache_methods)) {
+        return cache_miss(r, NULL, 0);
+    }
+
     rc = ngx_http_discard_request_body(r);
 
     if (rc != NGX_OK && rc != NGX_AGAIN) {
         return rc;
     }
-
-    conf = ngx_http_get_module_loc_conf(r, ngx_http_filter_cache_module);
 
     ctx = ngx_http_get_module_ctx(r, ngx_http_filter_cache_module);
 
@@ -482,20 +538,6 @@ ngx_http_filter_cache_handler(ngx_http_request_t *r)
 
     ctx->orig_cache = r->cache;
     c = r->cache = NULL;
-
-    switch (ngx_http_test_predicates(r, conf->cache_bypass)) {
-    case NGX_ERROR:
-        return NGX_ERROR;
-
-    case NGX_DECLINED:
-        return cache_miss(r, ctx, 0);
-    default: /* NGX_OK */
-        break;
-    }
-
-    if (!(r->method & conf->cache_methods)) {
-        return cache_miss(r, ctx, 0);
-    }
 
     if (ngx_http_file_cache_new(r) != NGX_OK) {
         return NGX_ERROR;
@@ -575,6 +617,16 @@ ngx_http_filter_cache_header_filter(ngx_http_request_t *r)
 
 
     conf = ngx_http_get_module_loc_conf(r, ngx_http_filter_cache_module);
+
+    switch (ngx_http_test_predicates(r, conf->no_cache)) {
+    case NGX_ERROR:
+        ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, __FILE__" ngx_http_test_predicates returned an error for no_cache");
+        return NGX_ERROR;
+    case NGX_DECLINED:
+        return ngx_http_next_header_filter(r);
+    default: /* NGX_OK */
+        break;
+    }
 
     ctx = ngx_http_get_module_ctx(r, ngx_http_filter_cache_module);
 
