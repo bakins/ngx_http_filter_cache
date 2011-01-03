@@ -166,6 +166,17 @@ ngx_module_t  ngx_http_filter_cache_module = {
     NGX_MODULE_V1_PADDING
 };
 
+/* will cleanup the cache, including possible temp file, if we didn't cache it*/
+static void
+filter_cache_cleanup(void *data)
+{
+    ngx_http_filter_cache_ctx_t *ctx = data;
+
+    if(ctx && !ctx->cacheable && ctx->cache) {
+        ngx_http_file_cache_free(ctx->cache, ctx->tf);
+    }
+}
+
 static ngx_int_t
 ngx_http_filter_cache_add_variables(ngx_conf_t *cf)
 {
@@ -482,6 +493,7 @@ ngx_http_filter_cache_handler(ngx_http_request_t *r)
     ngx_http_cache_t  *c;
     ngx_str_t                    *key;
     ngx_int_t          rc;
+    ngx_pool_cleanup_t *cln = NULL;
 
     if(r != r->main) {
         /*we don't currently serve subrequests*/
@@ -551,7 +563,6 @@ ngx_http_filter_cache_handler(ngx_http_request_t *r)
     key->len = ctx->key.len;
 
     ngx_http_file_cache_create_key(r);
-
     c = r->cache;
 
     c->min_uses = conf->cache_min_uses;
@@ -560,6 +571,14 @@ ngx_http_filter_cache_handler(ngx_http_request_t *r)
 
     ctx->cache = r->cache;
     ctx->cache->file_cache = conf->cache->data;
+
+    cln = ngx_pool_cleanup_add(r->pool, 0);
+    if (cln == NULL) {
+        return NGX_ERROR;
+    }
+
+    cln->handler = filter_cache_cleanup;
+    cln->data = ctx;
 
     rc = ngx_http_file_cache_open(r);
 
