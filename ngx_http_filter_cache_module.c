@@ -526,9 +526,9 @@ ngx_http_filter_cache_handler(ngx_http_request_t *r)
 
     if(ctx) {
         /*loop detected??*/
-        ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
+        ngx_log_error(NGX_LOG_INFO, r->connection->log, 0,
                       "cache loop in " __FILE__);
-        return NGX_ERROR;
+        return cache_miss(r, NULL, 0);
     }
 
     ctx = ngx_pcalloc(r->pool, sizeof(ngx_http_filter_cache_ctx_t));
@@ -776,6 +776,11 @@ ngx_http_filter_cache_header_filter(ngx_http_request_t *r)
         if(h[i].key.len && h[i].value.len) {
             /*is this content encoding? This check is very fast, but may not catch it if the header was added wrongly*/
             if(r->headers_out.content_encoding && r->headers_out.content_encoding->value.len && (h[i].value.data == r->headers_out.content_encoding->value.data)) {
+                continue;
+            }
+
+            /*is this content-length?  For some reason the above "hack" doesn't work for content-length consistently*/
+            if(h[i].lowcase_key && !strncmp(h[i].lowcase_key, "content-length", 14)) {
                 continue;
             }
 
