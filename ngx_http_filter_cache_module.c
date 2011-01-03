@@ -528,6 +528,9 @@ ngx_http_filter_cache_handler(ngx_http_request_t *r)
         /*loop detected??*/
         ngx_log_error(NGX_LOG_INFO, r->connection->log, 0,
                       "cache loop in " __FILE__);
+        /* XXX: this causes a 598 to be returned.  Is that what we want???
+         * should loop return yet another status code??
+         */
         return cache_miss(r, NULL, 0);
     }
 
