@@ -460,15 +460,6 @@ filter_cache_send(ngx_http_request_t *r)
     }
     raw = p + 1;
 
-    /* vary */
-    /* key.data = raw; */
-    /* p = memchr( (void *)raw, '\0', c->length - c->header_start - ( raw - hs )); */
-    /* key.len = p - raw; */
-    /* raw = p + 1; */
-    /* r->headers_out.vary.data = key.data; */
-    /* r->headers_out.vary.len = key.len; */
-
-
     /* Stuff from the Table */
     key.data = raw;
     key.len = 0;
@@ -751,10 +742,6 @@ ngx_http_filter_cache_header_filter(ngx_http_request_t *r)
     ngx_memcpy((void *)(ctx->buffer.pos), (void *)(&meta), sizeof(ngx_http_filter_cache_meta_t) );
     ctx->buffer.pos += sizeof(ngx_http_filter_cache_meta_t);
 
-    /* Status */
-    /* ngx_memcpy((void *)(ctx->buffer.pos), (void *)(&r->headers_out.status), sizeof(ngx_int_t) ); */
-    /* ctx->buffer.pos += sizeof(ngx_int_t); */
-
     /* Headers taht aren't in teh table for some reason */
 
     /* Content Type */
@@ -797,17 +784,6 @@ ngx_http_filter_cache_header_filter(ngx_http_request_t *r)
         *ctx->buffer.pos = (u_char)'\0';
         ctx->buffer.pos++;
     }
-
-    /* vary */
-    /* if ( r->headers_out.vary.len && r->headers_out.vary.data ) { */
-    /*     ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0, __FILE__" adding vary"); */
-    /*     ngx_cpystrn( ctx->buffer.pos, r->headers_out.vary.data, r->headers_out.vary.len + 1 ); */
-    /*     ctx->buffer.pos += r->headers_out.vary.len + 1; */
-    /* } */
-    /* else { */
-    /*     *ctx->buffer.pos = (u_char)'\0'; */
-    /*     ctx->buffer.pos++; */
-    /* } */
 
     /* Everything From the Table */
     part = &r->headers_out.headers.part;
