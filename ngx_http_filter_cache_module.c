@@ -496,7 +496,10 @@ ngx_http_filter_cache_handler(ngx_http_request_t *r)
     ngx_pool_cleanup_t *cln = NULL;
 
     if(r != r->main) {
-        /*we don't currently serve subrequests*/
+        /* we don't currently serve subrequests
+         * if we ever do subrequests, we will need a way to associate a ctx with this request
+         * maybe keep an r in ctx and compare to r here?
+         */
         return cache_miss(r, NULL, 0);
     }
 
@@ -530,6 +533,7 @@ ngx_http_filter_cache_handler(ngx_http_request_t *r)
                       "cache loop in " __FILE__);
         /* XXX: this causes a 598 to be returned.  Is that what we want???
          * should loop return yet another status code??
+         * be configurable and default to 598??
          */
         return cache_miss(r, NULL, 0);
     }
