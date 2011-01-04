@@ -402,7 +402,7 @@ filter_cache_send(ngx_http_request_t *r)
     hs = raw = (u_char *)(c->buf->start + c->header_start);
 
     /* Meta data */
-    meta = raw;
+    meta = (ngx_http_filter_cache_meta_t *)raw;
     raw += sizeof(ngx_http_filter_cache_meta_t);
 
     r->headers_out.status = meta->status;
@@ -659,7 +659,7 @@ ngx_http_filter_cache_header_filter(ngx_http_request_t *r)
     u_char *p;
     size_t len;
 
-    ngx_http_filter_cache_meta_t meta = {0};
+    ngx_http_filter_cache_meta_t meta;
 
     if(r != r->main) {
         /*just skip as we got headers in main*/
@@ -833,7 +833,7 @@ ngx_http_filter_cache_header_filter(ngx_http_request_t *r)
             }
 
             /*is this content-length?  For some reason the above "hack" doesn't work for content-length consistently*/
-            if(h[i].lowcase_key && !strncmp(h[i].lowcase_key, "content-length", 14)) {
+            if(h[i].lowcase_key && !ngx_strncmp(h[i].lowcase_key, "content-length", 14)) {
                 continue;
             }
 
