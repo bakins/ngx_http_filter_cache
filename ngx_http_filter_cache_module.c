@@ -266,7 +266,7 @@ ngx_http_filter_cache_merge_conf(ngx_conf_t *cf, void *parent, void *child)
         shm_zone = conf->cache;
 
         ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
-                           "\"fastcgi_cache\" zone \"%V\" is unknown",
+                           "\"filter_cache\" zone \"%V\" is unknown",
                            &shm_zone->shm.name);
 
         return NGX_CONF_ERROR;
