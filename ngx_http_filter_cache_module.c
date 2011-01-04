@@ -4,21 +4,6 @@
 
 ngx_module_t  ngx_http_filter_cache_module;
 
-static ngx_http_output_header_filter_pt  ngx_http_next_header_filter;
-static ngx_http_output_body_filter_pt    ngx_http_next_body_filter;
-static ngx_str_t  ngx_http_gzip_ok_string = ngx_string("gzip_ok");
-static ngx_str_t ngx_http_filter_cache_key = ngx_string("filter_cache_key");
-static ngx_int_t ngx_http_filter_cache_init(ngx_conf_t *cf);
-static ngx_int_t ngx_http_filter_cache_handler(ngx_http_request_t *r);
-static void *ngx_http_filter_cache_create_conf(ngx_conf_t *cf);
-static char *ngx_http_filter_cache_merge_conf(ngx_conf_t *cf, void *parent, void *child);
-static char *ngx_http_filter_cache(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
-static ngx_int_t ngx_http_filter_cache_header_filter(ngx_http_request_t *r);
-static ngx_int_t ngx_http_filter_cache_body_filter(ngx_http_request_t *r, ngx_chain_t *in);
-static ngx_int_t ngx_http_filter_cache_add_variables(ngx_conf_t *cf);
-static ngx_int_t ngx_http_gzip_ok_variable(ngx_http_request_t *r, ngx_http_variable_value_t *v, uintptr_t data);
-
-
 /*config */
 typedef struct {
     size_t                     buffer_size;
@@ -32,7 +17,23 @@ typedef struct {
     ngx_array_t *cache_bypass;
     ngx_array_t *no_cache;
     ngx_path_t *temp_path;
+    ngx_array_t *hide_headers;
 } ngx_http_filter_cache_conf_t;
+
+static ngx_http_output_header_filter_pt  ngx_http_next_header_filter;
+static ngx_http_output_body_filter_pt    ngx_http_next_body_filter;
+static ngx_str_t  ngx_http_gzip_ok_string = ngx_string("gzip_ok");
+static ngx_str_t ngx_http_filter_cache_key = ngx_string("filter_cache_key");
+static ngx_int_t ngx_http_filter_cache_init(ngx_conf_t *cf);
+static ngx_int_t ngx_http_filter_cache_handler(ngx_http_request_t *r);
+static void *ngx_http_filter_cache_create_conf(ngx_conf_t *cf);
+static char *ngx_http_filter_cache_merge_conf(ngx_conf_t *cf, void *parent, void *child);
+static char *ngx_http_filter_cache(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
+static ngx_int_t ngx_http_filter_cache_header_filter(ngx_http_request_t *r);
+static ngx_int_t ngx_http_filter_cache_body_filter(ngx_http_request_t *r, ngx_chain_t *in);
+static ngx_int_t ngx_http_filter_cache_add_variables(ngx_conf_t *cf);
+static ngx_int_t ngx_http_gzip_ok_variable(ngx_http_request_t *r, ngx_http_variable_value_t *v, uintptr_t data);
+static char *ngx_http_filter_cache_hide_headers_merge(ngx_conf_t *cf, ngx_http_filter_cache_conf_t *conf, ngx_http_filter_cache_conf_t *prev, ngx_str_t *default_hide_headers);
 
 /*meta information prepended to every cache file */
 typedef struct
@@ -62,6 +63,13 @@ static ngx_conf_bitmask_t  ngx_http_filter_cache_next_upstream_masks[] = {
     { ngx_string("updating"), NGX_HTTP_UPSTREAM_FT_UPDATING },
     { ngx_string("off"), NGX_HTTP_UPSTREAM_FT_OFF },
     { ngx_null_string, 0 }
+};
+
+static ngx_str_t  ngx_http_filter_cache_hide_headers[] = {
+    ngx_string("Content-Length"),
+    ngx_string("Content-Encoding"),
+    ngx_string("Set-Cookie"),
+    ngx_null_string
 };
 
 static ngx_command_t  ngx_http_filter_cache_commands[] = {
@@ -136,6 +144,12 @@ static ngx_command_t  ngx_http_filter_cache_commands[] = {
       offsetof(ngx_http_filter_cache_conf_t, buffer_size),
       NULL },
 
+    { ngx_string("filter_cache_hide_header"),
+      NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
+      ngx_conf_set_str_array_slot,
+      NGX_HTTP_LOC_CONF_OFFSET,
+      offsetof(ngx_http_filter_cache_conf_t, hide_headers),
+      NULL },
     ngx_null_command
 };
 
@@ -243,6 +257,8 @@ ngx_http_filter_cache_create_conf(ngx_conf_t *cf)
     conf->no_cache = NGX_CONF_UNSET_PTR;
     conf->cache_valid = NGX_CONF_UNSET_PTR;
     conf->buffer_size = NGX_CONF_UNSET_SIZE;
+    conf->hide_headers = NGX_CONF_UNSET_PTR;
+
     return conf;
 }
 
@@ -321,6 +337,11 @@ ngx_http_filter_cache_merge_conf(ngx_conf_t *cf, void *parent, void *child)
                               prev->buffer_size,
                               (size_t) ngx_pagesize);
 
+    if (ngx_http_filter_cache_hide_headers_merge(cf, conf, prev, ngx_http_filter_cache_hide_headers)
+        != NGX_OK)
+    {
+        return NGX_CONF_ERROR;
+    }
 
     return NGX_CONF_OK;
 }
@@ -635,6 +656,29 @@ ngx_http_filter_cache_handler(ngx_http_request_t *r)
     return cache_miss(r, ctx, 1);
 }
 
+static ngx_inline ngx_int_t find_string_in_array(ngx_str_t *s, ngx_array_t *array)
+{
+    ngx_uint_t i;
+    ngx_str_t *h;
+
+    if(!s || !array || !s->len || !s->data || !array->nelts) {
+        return 0;
+    }
+
+    h =  array->elts;
+    for (i = 0; i < array->nelts; i++) {
+        /* we already made sure s->len is not 0 above */
+        if( (h[i].len == s->len) && h[i].data ) {
+            /*only need to do check if lengths are the same*/
+            if(!ngx_strncasecmp((u_char *)h[i].data, (u_char *)s->data, s->len)) {
+                return 1;
+            }
+        }
+    }
+    return 0;
+}
+
+
 static ngx_int_t
 ngx_http_filter_cache_header_filter(ngx_http_request_t *r)
 {
@@ -798,18 +842,10 @@ ngx_http_filter_cache_header_filter(ngx_http_request_t *r)
             h = part->elts;
             i = 0;
         }
-        /* this blows up, unterminated strings?
-        ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0, __FILE__" header => %s : %s", h[i].key.data, h[i].value.data);
-        */
 
         if(h[i].key.len && h[i].value.len) {
-            /*is this content encoding? This check is very fast, but may not catch it if the header was added wrongly*/
-            if(r->headers_out.content_encoding && r->headers_out.content_encoding->value.len && (h[i].value.data == r->headers_out.content_encoding->value.data)) {
-                continue;
-            }
 
-            /*is this content-length?  For some reason the above "hack" doesn't work for content-length consistently*/
-            if(h[i].lowcase_key && !ngx_strncmp(h[i].lowcase_key, "content-length", 14)) {
+            if(find_string_in_array(&(h[i].key), conf->hide_headers)){
                 continue;
             }
 
@@ -883,4 +919,46 @@ ngx_http_filter_cache_body_filter(ngx_http_request_t *r, ngx_chain_t *in)
 
     r->cache = ctx->orig_cache;
     return ngx_http_next_body_filter(r, in);
+}
+
+static char * ngx_http_filter_cache_hide_headers_merge(ngx_conf_t *cf, ngx_http_filter_cache_conf_t *conf, ngx_http_filter_cache_conf_t *prev, ngx_str_t *default_hide_headers)
+{
+    ngx_str_t *h, *hk;
+    ngx_int_t merge = 0;
+
+    if (conf->hide_headers == NGX_CONF_UNSET_PTR) {
+        conf->hide_headers = ngx_array_create(cf->pool, 4, sizeof(ngx_str_t));
+        if (conf->hide_headers == NULL) {
+            return NGX_CONF_ERROR;
+        }
+    }
+
+    if(prev->hide_headers == NGX_CONF_UNSET_PTR) {
+        /*easy case, neither are set*/
+        for (h = default_hide_headers; h->len; h++) {
+            hk = ngx_array_push(conf->hide_headers);
+            if (hk == NULL) {
+                return NGX_CONF_ERROR;
+            }
+            *hk = *h;
+        }
+    } else {
+        merge = 1;
+    }
+
+    if(merge) {
+        for (h = prev->hide_headers->elts; h->len; h++) {
+            /*if we really wanted to squeeze the nth degree out of this, we could sort them and jump out if we find a value "larger" than us??
+             * or use something qsort and disgard the duplicates? find_string_in_array is pretty effecient, as it only uses stncasecmp as a last resort
+             */
+            if(!find_string_in_array(h, conf->hide_headers)){
+                hk = ngx_array_push(conf->hide_headers);
+                if (hk == NULL) {
+                    return NGX_CONF_ERROR;
+                }
+                *hk = *h;
+            }
+        }
+    }
+    return NGX_CONF_OK;
 }
