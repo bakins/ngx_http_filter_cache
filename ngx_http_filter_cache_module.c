@@ -40,6 +40,7 @@ typedef struct
 {
     ngx_uint_t status;
     unsigned gzip_vary:1; /* Note: we leave this in on every compile, just in case someone switches between nginx binaries with/without gzip support while object is valid.  A long shot I know*/
+    time_t last_modified_time;
 } ngx_http_filter_cache_meta_t;
 
 /*context for the filter*/
@@ -431,6 +432,7 @@ filter_cache_send(ngx_http_request_t *r)
 #if (NGX_HTTP_GZIP)
     r->gzip_vary = meta->gzip_vary;
 #endif
+    r->headers_out.last_modified_time = meta->last_modified_time;
 
     /* ngx_memcpy((void *)(&r->headers_out.status), (void *)raw, sizeof(ngx_int_t)); */
     /* raw += sizeof(ngx_int_t); */
@@ -782,6 +784,8 @@ ngx_http_filter_cache_header_filter(ngx_http_request_t *r)
 #if (NGX_HTTP_GZIP)
     meta.gzip_vary = r->gzip_vary; /* Note: there is still some wierdness to how gzip_vary works...*/
 #endif
+
+    meta.last_modified_time = r->headers_out.last_modified_time;
 
     ngx_memcpy((void *)(ctx->buffer.pos), (void *)(&meta), sizeof(ngx_http_filter_cache_meta_t) );
     ctx->buffer.pos += sizeof(ngx_http_filter_cache_meta_t);
