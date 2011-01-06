@@ -22,7 +22,6 @@ typedef struct {
 
 static ngx_http_output_header_filter_pt  ngx_http_next_header_filter;
 static ngx_http_output_body_filter_pt    ngx_http_next_body_filter;
-static ngx_str_t  ngx_http_gzip_ok_string = ngx_string("gzip_ok");
 static ngx_str_t ngx_http_filter_cache_key = ngx_string("filter_cache_key");
 static ngx_int_t ngx_http_filter_cache_init(ngx_conf_t *cf);
 static ngx_int_t ngx_http_filter_cache_handler(ngx_http_request_t *r);
@@ -34,7 +33,8 @@ static ngx_int_t ngx_http_filter_cache_body_filter(ngx_http_request_t *r, ngx_ch
 static ngx_int_t ngx_http_filter_cache_add_variables(ngx_conf_t *cf);
 static ngx_int_t ngx_http_gzip_ok_variable(ngx_http_request_t *r, ngx_http_variable_value_t *v, uintptr_t data);
 static char *ngx_http_filter_cache_hide_headers_merge(ngx_conf_t *cf, ngx_http_filter_cache_conf_t *conf, ngx_http_filter_cache_conf_t *prev, ngx_str_t *default_hide_headers);
-
+static ngx_int_t ngx_filter_upstream_cache_status(ngx_http_request_t *r,
+                                                ngx_http_variable_value_t *v, uintptr_t data);
 /*meta information prepended to every cache file */
 typedef struct
 {
@@ -46,6 +46,7 @@ typedef struct
 /*context for the filter*/
 typedef struct
 {
+    unsigned cache_status:3;
     ngx_int_t cacheable;
     ngx_str_t key;
     ngx_http_cache_t *cache;
@@ -192,18 +193,33 @@ filter_cache_cleanup(void *data)
     }
 }
 
+static ngx_http_variable_t  ngx_http_filter_cache_vars[] = {
+
+    { ngx_string("filter_cache_status"), NULL,
+      ngx_http_filter_cache_status, 0,
+      NGX_HTTP_VAR_NOHASH|NGX_HTTP_VAR_NOCACHEABLE, 0 },
+
+    { ngx_string("gzip_ok"), NULL,
+      ngx_http_gzip_ok_variable, 0,
+      NGX_HTTP_VAR_NOHASH|NGX_HTTP_VAR_NOCACHEABLE, 0 },
+
+    { ngx_null_string, NULL, NULL, 0, 0, 0 }
+};
+
 static ngx_int_t
 ngx_http_filter_cache_add_variables(ngx_conf_t *cf)
 {
-    ngx_http_variable_t  *var;
+    ngx_http_variable_t  *var, *v;
 
-    var = ngx_http_add_variable(cf, &ngx_http_gzip_ok_string, NGX_HTTP_VAR_NOHASH);
+    for (v = ngx_http_filter_cache_vars; v->name.len; v++) {
+        var = ngx_http_add_variable(cf, &v->name, v->flags);
+        if (var == NULL) {
+            return NGX_ERROR;
+        }
 
-    if (var == NULL) {
-        return NGX_ERROR;
+        var->get_handler = v->get_handler;
+        var->data = v->data;
     }
-
-    var->get_handler = ngx_http_gzip_ok_variable;
 
     return NGX_OK;
 }
@@ -966,3 +982,28 @@ static char * ngx_http_filter_cache_hide_headers_merge(ngx_conf_t *cf, ngx_http_
     }
     return NGX_CONF_OK;
 }
+
+static ngx_int_t ngx_filter_upstream_cache_status(ngx_http_request_t *r,
+                                                  ngx_http_variable_value_t *v, uintptr_t data)
+{
+    ngx_uint_t  n;
+    ngx_http_filter_cache_ctx_t *ctx = NULL;;
+
+    ctx = ngx_http_get_module_ctx(r->main, ngx_http_filter_cache_module);
+
+    if (ctx == NULL || ctx->cache_status == 0) {
+        v->not_found = 1;
+        return NGX_OK;
+    }
+
+    n = ctx->cache_status - 1;
+
+    v->valid = 1;
+    v->no_cacheable = 0;
+    v->not_found = 0;
+    v->len = ngx_http_cache_status[n].len;
+    v->data = ngx_http_cache_status[n].data;
+
+    return NGX_OK;
+}
+
