@@ -33,7 +33,7 @@ static ngx_int_t ngx_http_filter_cache_body_filter(ngx_http_request_t *r, ngx_ch
 static ngx_int_t ngx_http_filter_cache_add_variables(ngx_conf_t *cf);
 static ngx_int_t ngx_http_gzip_ok_variable(ngx_http_request_t *r, ngx_http_variable_value_t *v, uintptr_t data);
 static char *ngx_http_filter_cache_hide_headers_merge(ngx_conf_t *cf, ngx_http_filter_cache_conf_t *conf, ngx_http_filter_cache_conf_t *prev, ngx_str_t *default_hide_headers);
-static ngx_int_t ngx_filter_upstream_cache_status(ngx_http_request_t *r,
+static ngx_int_t ngx_http_filter_cache_status(ngx_http_request_t *r,
                                                 ngx_http_variable_value_t *v, uintptr_t data);
 /*meta information prepended to every cache file */
 typedef struct
@@ -983,7 +983,7 @@ static char * ngx_http_filter_cache_hide_headers_merge(ngx_conf_t *cf, ngx_http_
     return NGX_CONF_OK;
 }
 
-static ngx_int_t ngx_filter_upstream_cache_status(ngx_http_request_t *r,
+static ngx_int_t ngx_http_filter_cache_status(ngx_http_request_t *r,
                                                   ngx_http_variable_value_t *v, uintptr_t data)
 {
     ngx_uint_t  n;
