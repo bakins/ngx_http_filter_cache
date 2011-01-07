@@ -43,11 +43,15 @@ typedef struct
     time_t last_modified_time;
 } ngx_http_filter_cache_meta_t;
 
+#define FILTER_TRYCACHE 0
+#define FILTER_CACHEABLE 1
+#define FILTER_DONOTCACHE 2 /*don't attempt to cache */
+
 /*context for the filter*/
 typedef struct
 {
     unsigned cache_status:3;
-    ngx_int_t cacheable;
+    unsigned cacheable:3;
     ngx_str_t key;
     ngx_http_cache_t *cache;
     ngx_http_cache_t *orig_cache;
@@ -407,6 +411,7 @@ static ngx_int_t cache_miss(ngx_http_request_t *r,  ngx_http_filter_cache_ctx_t 
 
         if(set_filter && !r->header_only) {
             ngx_http_set_ctx(r, ctx, ngx_http_filter_cache_module);
+            ctx->cacheable = FILTER_TRYCACHE; /*this is a hack. the filter will figure out if it is cacheable?? */
             return 599;
         }
     }
@@ -558,26 +563,6 @@ ngx_http_filter_cache_handler(ngx_http_request_t *r)
 
     conf = ngx_http_get_module_loc_conf(r, ngx_http_filter_cache_module);
 
-    switch (ngx_http_test_predicates(r, conf->cache_bypass)) {
-    case NGX_ERROR:
-        ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, __FILE__" ngx_http_test_predicates returned an error for bypass");
-        return NGX_ERROR;
-    case NGX_DECLINED:
-        return cache_miss(r, NULL, 0);
-    default: /* NGX_OK */
-        break;
-    }
-
-    if (!(r->method & conf->cache_methods)) {
-        return cache_miss(r, NULL, 0);
-    }
-
-    rc = ngx_http_discard_request_body(r);
-
-    if (rc != NGX_OK && rc != NGX_AGAIN) {
-        return rc;
-    }
-
     ctx = ngx_http_get_module_ctx(r, ngx_http_filter_cache_module);
 
     if(ctx) {
@@ -596,6 +581,34 @@ ngx_http_filter_cache_handler(ngx_http_request_t *r)
     if (ctx == NULL) {
         return NGX_ERROR;
     }
+
+    ctx->cacheable = FILTER_DONOTCACHE;
+    ctx->cache_status = NGX_HTTP_CACHE_MISS;
+
+    /* needed so the ctx works in cache status*/
+    ngx_http_set_ctx(r, ctx, ngx_http_filter_cache_module);
+
+    switch (ngx_http_test_predicates(r, conf->cache_bypass)) {
+    case NGX_ERROR:
+        ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, __FILE__" ngx_http_test_predicates returned an error for bypass");
+        return NGX_ERROR;
+    case NGX_DECLINED:
+        ctx->cache_status = NGX_HTTP_CACHE_BYPASS;
+        return cache_miss(r, NULL, 0);
+    default: /* NGX_OK */
+        break;
+    }
+
+    if (!(r->method & conf->cache_methods)) {
+        return cache_miss(r, NULL, 0);
+    }
+
+    rc = ngx_http_discard_request_body(r);
+
+    if (rc != NGX_OK && rc != NGX_AGAIN) {
+        return rc;
+    }
+
 
     vv = ngx_http_get_indexed_variable(r, conf->index);
 
@@ -642,20 +655,26 @@ ngx_http_filter_cache_handler(ngx_http_request_t *r)
 
     rc = ngx_http_file_cache_open(r);
 
-    if(NGX_HTTP_CACHE_UPDATING == rc) {
+    switch(rc) {
+    case NGX_HTTP_CACHE_UPDATING:
         if (conf->cache_use_stale & NGX_HTTP_UPSTREAM_FT_UPDATING) {
+            ctx->cache_status = NGX_HTTP_CACHE_UPDATING;
             rc = NGX_OK;
         } else {
             rc = NGX_HTTP_CACHE_STALE;
         }
+        break;
+    case NGX_OK:
+        ctx->cache_status = NGX_HTTP_CACHE_HIT;
     }
 
-    switch (rc) {
 
+    switch (rc) {
     case NGX_OK:
         return filter_cache_send(r);
         break;
     case NGX_HTTP_CACHE_STALE:
+        ctx->cache_status = NGX_HTTP_CACHE_EXPIRED;
         break;
     case NGX_DECLINED:
         break;
@@ -734,7 +753,7 @@ ngx_http_filter_cache_header_filter(ngx_http_request_t *r)
 
     ctx = ngx_http_get_module_ctx(r, ngx_http_filter_cache_module);
 
-    if(!ctx) {
+    if(!ctx || (FILTER_DONOTCACHE == ctx->cacheable)) {
         return ngx_http_next_header_filter(r);
     }
 
@@ -914,7 +933,7 @@ ngx_http_filter_cache_body_filter(ngx_http_request_t *r, ngx_chain_t *in)
     conf = ngx_http_get_module_loc_conf(r, ngx_http_filter_cache_module);
     ctx = ngx_http_get_module_ctx(r->main, ngx_http_filter_cache_module);
 
-    if (!ctx || !ctx->cacheable) {
+    if (!ctx || !ctx->cacheable || (FILTER_DONOTCACHE == ctx->cacheable)) {
         return ngx_http_next_body_filter(r, in);
     }
 
