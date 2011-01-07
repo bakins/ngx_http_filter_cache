@@ -46,6 +46,7 @@ typedef struct
 #define FILTER_TRYCACHE 0
 #define FILTER_CACHEABLE 1
 #define FILTER_DONOTCACHE 2 /*don't attempt to cache */
+#define FILTER_CACHEDONE 3 /* we are done cacheing*/
 
 /*context for the filter*/
 typedef struct
@@ -192,7 +193,8 @@ filter_cache_cleanup(void *data)
 {
     ngx_http_filter_cache_ctx_t *ctx = data;
 
-    if(ctx && !ctx->cacheable && ctx->cache) {
+    /*if(ctx && !ctx->cacheable && ctx->cache) {*/
+    if( ctx && (FILTER_CACHEDONE != ctx->cacheable) && ctx->cache) {
         ngx_http_file_cache_free(ctx->cache, ctx->tf);
     }
 }
@@ -933,7 +935,8 @@ ngx_http_filter_cache_body_filter(ngx_http_request_t *r, ngx_chain_t *in)
     conf = ngx_http_get_module_loc_conf(r, ngx_http_filter_cache_module);
     ctx = ngx_http_get_module_ctx(r->main, ngx_http_filter_cache_module);
 
-    if (!ctx || !ctx->cacheable || (FILTER_DONOTCACHE == ctx->cacheable)) {
+    /*if client aborted, then we can't cache as we may be incomplete??*/
+    if (!ctx || !ctx->cacheable || (FILTER_DONOTCACHE == ctx->cacheable) || r->connection->close) {
         return ngx_http_next_body_filter(r, in);
     }
 
@@ -952,8 +955,9 @@ ngx_http_filter_cache_body_filter(ngx_http_request_t *r, ngx_chain_t *in)
     }
 
     if(chain_contains_last_buffer) {
-        r->cache->updated = 0;
+        /* r->cache->updated = 0; */
         ngx_http_file_cache_update(r, ctx->tf);
+        ctx->cacheable = FILTER_CACHEDONE;
     }
 
     r->cache = ctx->orig_cache;
