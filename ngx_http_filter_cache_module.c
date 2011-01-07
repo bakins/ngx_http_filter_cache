@@ -37,8 +37,8 @@ static ngx_int_t ngx_http_filter_cache_status(ngx_http_request_t *r,
                                               ngx_http_variable_value_t *v, uintptr_t data);
 
 static ngx_int_t ngx_http_filter_cache_new(ngx_http_request_t *r);
-static ngx_int_t ngx_http_filter_cache_create(ngx_http_request_t *r);
-/* static void ngx_http_filter_cache_create_key(ngx_http_request_t *r); */
+/*static ngx_int_t ngx_http_filter_cache_create(ngx_http_request_t *r);*/
+static void ngx_http_filter_cache_create_key(ngx_http_request_t *r);
 static ngx_int_t ngx_http_filter_cache_open(ngx_http_request_t *r);
 static void ngx_http_filter_cache_set_header(ngx_http_request_t *r, u_char *buf);
 static void ngx_http_filter_cache_update(ngx_http_request_t *r, ngx_temp_file_t *tf);
@@ -645,8 +645,8 @@ ngx_http_filter_cache_handler(ngx_http_request_t *r)
     key->len = ctx->key.len;
 
     ctx->cache->file_cache = conf->cache->data;
-    /* ngx_http_filter_cache_create_key(r); */
-    ngx_http_filter_cache_create(r);
+    ngx_http_filter_cache_create_key(r);
+    /* ngx_http_filter_cache_create(r); */
 
     c = ctx->cache;
 
@@ -1067,31 +1067,31 @@ static ngx_int_t ngx_http_filter_cache_new(ngx_http_request_t *r)
 }
 
 
-static ngx_int_t ngx_http_filter_cache_create(ngx_http_request_t *r)
-{
-    ngx_http_cache_t *c = NULL;
-    ngx_http_filter_cache_ctx_t *ctx = NULL;
-    ngx_int_t rc;
-
-    ctx = ngx_http_get_module_ctx(r, ngx_http_filter_cache_module);
-    c = r->cache;
-    r->cache = ctx->cache;
-    rc = ngx_http_file_cache_create(r);
-    r->cache = c;
-    return rc;
-}
-
-/* static void ngx_http_filter_cache_create_key(ngx_http_request_t *r) */
+/* static ngx_int_t ngx_http_filter_cache_create(ngx_http_request_t *r) */
 /* { */
 /*     ngx_http_cache_t *c = NULL; */
 /*     ngx_http_filter_cache_ctx_t *ctx = NULL; */
+/*     ngx_int_t rc; */
 
 /*     ctx = ngx_http_get_module_ctx(r, ngx_http_filter_cache_module); */
 /*     c = r->cache; */
 /*     r->cache = ctx->cache; */
-/*     ngx_http_filter_cache_create_key(r); */
+/*     rc = ngx_http_file_cache_create(r); */
 /*     r->cache = c; */
+/*     return rc; */
 /* } */
+
+static void ngx_http_filter_cache_create_key(ngx_http_request_t *r)
+{
+    ngx_http_cache_t *c = NULL;
+    ngx_http_filter_cache_ctx_t *ctx = NULL;
+
+    ctx = ngx_http_get_module_ctx(r, ngx_http_filter_cache_module);
+    c = r->cache;
+    r->cache = ctx->cache;
+    ngx_http_file_cache_create_key(r);
+    r->cache = c;
+}
 
 
 static ngx_int_t ngx_http_filter_cache_open(ngx_http_request_t *r)
