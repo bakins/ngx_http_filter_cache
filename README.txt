@@ -97,3 +97,12 @@ filter_cache_disable $http_pragma     $http_authorization;
 The expression is false if it is equal to the empty string or "0". For instance, in the above example, the request will always go through to the back-end if the cookie "nocache" is set in the request.
 Note that the response from the back-end is still eligible for caching. Thus one way of refreshing an item in the cache is sending a request with a header you pick yourself, e.g. "My-Secret-Header: 1", then having a proxy_no_cache line like:
 filter_cache_disable $http_my_secret_header;
+
+** filter_cache_grace
+syntax: filter_cache_grace 60s;
+default: None
+context: http, server, location
+Specifies the amount of time after an item has expired in cache and is
+updating that it can be served.  Use with
+filter_cache_use_stale_updating.  If not set, or set to 0, this is
+disabled.
