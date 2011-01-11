@@ -8,6 +8,7 @@ ngx_module_t  ngx_http_filter_cache_module;
 typedef struct {
     size_t                     buffer_size;
     ngx_int_t                index;
+    time_t grace; /*how long after something is stale will be allow to serve stale*/
     ngx_http_complex_value_t cache_key;
     ngx_shm_zone_t *cache;
     ngx_uint_t cache_min_uses;
@@ -167,6 +168,14 @@ static ngx_command_t  ngx_http_filter_cache_commands[] = {
       NGX_HTTP_LOC_CONF_OFFSET,
       offsetof(ngx_http_filter_cache_conf_t, hide_headers),
       NULL },
+
+    { ngx_string("filter_cache_grace"),
+    NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
+    ngx_conf_set_sec_slot,
+    NGX_HTTP_LOC_CONF_OFFSET,
+    offsetof(ngx_http_filter_cache_conf_t, grace),
+    NULL },
+
     ngx_null_command
 };
 
@@ -291,7 +300,7 @@ ngx_http_filter_cache_create_conf(ngx_conf_t *cf)
     conf->cache_valid = NGX_CONF_UNSET_PTR;
     conf->buffer_size = NGX_CONF_UNSET_SIZE;
     conf->hide_headers = NGX_CONF_UNSET_PTR;
-
+    conf->grace = NGX_CONF_UNSET;
     return conf;
 }
 
@@ -375,6 +384,9 @@ ngx_http_filter_cache_merge_conf(ngx_conf_t *cf, void *parent, void *child)
     {
         return NGX_CONF_ERROR;
     }
+
+    ngx_conf_merge_value(conf->grace,
+                         prev->grace, 0);
 
     return NGX_CONF_OK;
 }
@@ -619,7 +631,6 @@ ngx_http_filter_cache_handler(ngx_http_request_t *r)
         return rc;
     }
 
-
     vv = ngx_http_get_indexed_variable(r, conf->index);
 
     if (vv == NULL || vv->not_found || vv->len == 0) {
@@ -653,23 +664,28 @@ ngx_http_filter_cache_handler(ngx_http_request_t *r)
     c->body_start = conf->buffer_size;
     c->file_cache = conf->cache->data;
 
-
-
-
     rc = ngx_http_filter_cache_open(r);
 
     switch(rc) {
     case NGX_HTTP_CACHE_UPDATING:
         if (conf->cache_use_stale & NGX_HTTP_UPSTREAM_FT_UPDATING) {
-            ctx->cache_status = NGX_HTTP_CACHE_UPDATING;
-            rc = NGX_OK;
+            if(ctx->cache && conf->grace && ( (ctx->cache->valid_sec - ngx_time() ) < conf->grace)) {
+                ctx->cache_status = NGX_HTTP_CACHE_UPDATING;
+                rc = NGX_OK;
+            } else {
+                rc = NGX_HTTP_CACHE_STALE;
+            }
         } else {
             rc = NGX_HTTP_CACHE_STALE;
         }
         break;
     case NGX_OK:
         ctx->cache_status = NGX_HTTP_CACHE_HIT;
-        /* ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, __FILE__" valid: %T %T = %T", ctx->cache->valid_sec, ngx_time(), ctx->cache->valid_sec - ngx_time()); */
+        /* ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, __FILE__" NGX_HTTP_CACHE_HIT"); */
+        break;
+    default:
+        /* ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, __FILE__" rc = %d", rc); */
+        break;
     }
 
 
@@ -960,7 +976,8 @@ ngx_http_filter_cache_body_filter(ngx_http_request_t *r, ngx_chain_t *in)
 
     /*if client aborted, then we can't cache as we may be incomplete??*/
     /*could this cause a loop?*/
-    if (!ctx || (FILTER_CACHEABLE != ctx->cacheable) || r->connection->close || r->connection->destroyed) {
+    /* if (!ctx || (FILTER_CACHEABLE != ctx->cacheable) || r->connection->close || r->connection->destroyed) { */
+    if (!ctx || (FILTER_CACHEABLE != ctx->cacheable)) {
         if(ctx && ctx->cache) {
             ctx->cacheable = FILTER_DONOTCACHE;
             ngx_http_filter_cache_free(ctx->cache, ctx->tf);
