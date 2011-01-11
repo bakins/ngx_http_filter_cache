@@ -562,7 +562,6 @@ ngx_http_filter_cache_handler(ngx_http_request_t *r)
     ngx_http_cache_t  *c;
     ngx_str_t                    *key;
     ngx_int_t          rc;
-    ngx_pool_cleanup_t *cln = NULL;
 
     if(r != r->main) {
         /* we don't currently serve subrequests
@@ -655,13 +654,7 @@ ngx_http_filter_cache_handler(ngx_http_request_t *r)
     c->file_cache = conf->cache->data;
 
 
-    cln = ngx_pool_cleanup_add(r->pool, 0);
-    if (cln == NULL) {
-        return NGX_ERROR;
-    }
 
-    cln->handler = filter_cache_cleanup;
-    cln->data = ctx;
 
     rc = ngx_http_filter_cache_open(r);
 
@@ -741,6 +734,7 @@ ngx_http_filter_cache_header_filter(ngx_http_request_t *r)
     ngx_uint_t i;
     u_char *p;
     size_t len;
+    ngx_pool_cleanup_t *cln = NULL;
 
     ngx_http_filter_cache_meta_t meta;
 
@@ -807,6 +801,14 @@ ngx_http_filter_cache_header_filter(ngx_http_request_t *r)
         != NGX_OK) {
         return NGX_ERROR;
     }
+    ctx->tf = tf;
+
+    cln = ngx_pool_cleanup_add(r->pool, 0);
+    if (cln == NULL) {
+        return NGX_ERROR;
+    }
+    cln->handler = filter_cache_cleanup;
+    cln->data = ctx;
 
     ctx->buffer.pos = ctx->buffer.start = ngx_palloc(r->pool, conf->buffer_size);
     ctx->buffer.end = ctx->buffer.start + conf->buffer_size;
@@ -928,7 +930,7 @@ ngx_http_filter_cache_header_filter(ngx_http_request_t *r)
     offset = ngx_write_chain_to_temp_file(tf, &out);
     tf->offset += offset;
 
-    ctx->tf = tf;
+
     r->main_filter_need_in_memory = 1;
 
     return ngx_http_next_header_filter(r);
@@ -976,7 +978,6 @@ ngx_http_filter_cache_body_filter(ngx_http_request_t *r, ngx_chain_t *in)
     }
 
     if(chain_contains_last_buffer) {
-        /* r->cache->updated = 0; */
         ngx_http_filter_cache_update(r, ctx->tf);
         ctx->cacheable = FILTER_CACHEDONE;
     }
