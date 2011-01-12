@@ -955,6 +955,7 @@ ngx_http_filter_cache_body_filter(ngx_http_request_t *r, ngx_chain_t *in)
     ngx_http_filter_cache_conf_t *conf;
     ssize_t offset;
     ngx_chain_t *chain_link;
+    int done;
 
     ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
                    "ngx_http_filter_cache_body_filter start");
@@ -963,6 +964,8 @@ ngx_http_filter_cache_body_filter(ngx_http_request_t *r, ngx_chain_t *in)
     ctx = ngx_http_get_module_ctx(r->main, ngx_http_filter_cache_module);
 
     if (!ctx || (FILTER_CACHEABLE != ctx->cacheable)) {
+        ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+                       "ngx_http_filter_cache_body_filter not cacheable");
         return ngx_http_next_body_filter(r, in);
     }
 
@@ -972,10 +975,22 @@ ngx_http_filter_cache_body_filter(ngx_http_request_t *r, ngx_chain_t *in)
     /*XXX: need to find out if we reached the end*/
     for ( chain_link = in; chain_link != NULL; chain_link = chain_link->next ) {
         if (chain_link->buf->last_buf || chain_link->buf->last_in_chain) {
-            ngx_http_filter_cache_update(r, ctx->tf);
-            ctx->cacheable = FILTER_CACHEDONE;
+            done = 1;
         }
     }
+
+    if(done) {
+        ngx_http_filter_cache_update(r, ctx->tf);
+        ctx->cacheable = FILTER_CACHEDONE;
+        ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+                       "ngx_http_filter_cache_body_filter FILTER_CACHEDONE");
+    } else {
+        ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+                       "ngx_http_filter_cache_body_filter not done");
+    }
+
+     ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+                    "ngx_http_filter_cache_body_filter end");
     return ngx_http_next_body_filter(r, in);
 }
 
