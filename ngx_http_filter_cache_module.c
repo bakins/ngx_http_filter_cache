@@ -681,13 +681,7 @@ ngx_http_filter_cache_handler(ngx_http_request_t *r)
         break;
     case NGX_OK:
         ctx->cache_status = NGX_HTTP_CACHE_HIT;
-        /* ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, __FILE__" NGX_HTTP_CACHE_HIT"); */
-        break;
-    default:
-        /* ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, __FILE__" rc = %d", rc); */
-        break;
     }
-
 
     switch (rc) {
     case NGX_OK:
@@ -767,7 +761,6 @@ ngx_http_filter_cache_header_filter(ngx_http_request_t *r)
         ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, __FILE__" ngx_http_test_predicates returned an error for no_cache");
         return NGX_ERROR;
     case NGX_DECLINED:
-        /* return ngx_http_next_header_filter(r); */
         goto nocache;
     default: /* NGX_OK */
         break;
@@ -793,10 +786,7 @@ ngx_http_filter_cache_header_filter(ngx_http_request_t *r)
                                       r->headers_out.status);
     if (valid) {
         ctx->cache->valid_sec = now + valid;
-        /* ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, __FILE__" valid: %i: %T - %T = %T ", r->headers_out.status, ctx->cache->valid_sec, ngx_time(), valid); */
     } else {
-        /* r->cache = ctx->orig_cache; */
-        /* return ngx_http_next_header_filter(r); */
         goto nocache;
     }
 
@@ -837,7 +827,6 @@ ngx_http_filter_cache_header_filter(ngx_http_request_t *r)
     ctx->cache->last_modified = r->headers_out.last_modified_time;
     ctx->cache->date = now;
 
-    ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0, __FILE__"adding headers");
     /* Headers */
 
     /* fill in the metadata*/
@@ -858,7 +847,6 @@ ngx_http_filter_cache_header_filter(ngx_http_request_t *r)
     if ( r->headers_out.content_type.data ) {
         p = memchr((void *)r->headers_out.content_type.data, ';', r->headers_out.content_type.len );
         if ( p ) {
-            ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0, __FILE__" adding content type");
             len = p - r->headers_out.content_type.data;
             ngx_cpystrn( ctx->buffer.pos, r->headers_out.content_type.data, len + 1);
             ctx->buffer.pos += len + 1;
@@ -875,7 +863,6 @@ ngx_http_filter_cache_header_filter(ngx_http_request_t *r)
 
     /* Charset */
     if ( r->headers_out.charset.data ) {
-        ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0, __FILE__" adding charset");
         ngx_cpystrn( ctx->buffer.pos, r->headers_out.charset.data, r->headers_out.charset.len + 1 );
         ctx->buffer.pos += r->headers_out.charset.len + 1;
     }
@@ -886,7 +873,6 @@ ngx_http_filter_cache_header_filter(ngx_http_request_t *r)
 
     /* Content Encoding */
     if ( r->headers_out.content_encoding && r->headers_out.content_encoding->value.len) {
-        ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0, __FILE__" adding content_encoding");
         ngx_cpystrn( ctx->buffer.pos, r->headers_out.content_encoding->value.data, r->headers_out.content_encoding->value.len + 1 );
         ctx->buffer.pos += r->headers_out.content_encoding->value.len + 1;
     }
@@ -916,8 +902,7 @@ ngx_http_filter_cache_header_filter(ngx_http_request_t *r)
             }
 
             if ( (ngx_uint_t)(h[i].key.len + h[i].value.len + 4) > (ngx_uint_t)(ctx->buffer.last - ctx->buffer.pos) ) {
-                ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, __FILE__" ran out of buffer while copying headers, not caching");
-                ctx->cacheable = 0;
+                ctx->cacheable = FILTER_DONOTCACHE;
                 break;
             }
 
@@ -952,11 +937,12 @@ ngx_http_filter_cache_header_filter(ngx_http_request_t *r)
     return ngx_http_next_header_filter(r);
 
 nocache:
+
     if(ctx) {
         ctx->cacheable = FILTER_DONOTCACHE;
-        if(ctx->cache) {
-            ngx_http_filter_cache_free(ctx->cache, ctx->tf);
-        }
+        /* if(ctx->cache) { */
+            /* ngx_http_filter_cache_free(ctx->cache, ctx->tf); */
+        /* } */
 
     }
     return ngx_http_next_header_filter(r);
@@ -968,20 +954,15 @@ ngx_http_filter_cache_body_filter(ngx_http_request_t *r, ngx_chain_t *in)
     ngx_http_filter_cache_ctx_t *ctx;
     ngx_http_filter_cache_conf_t *conf;
     ssize_t offset;
-    int chain_contains_last_buffer = 0;
     ngx_chain_t *chain_link;
+
+    ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+                   "ngx_http_filter_cache_body_filter start");
 
     conf = ngx_http_get_module_loc_conf(r, ngx_http_filter_cache_module);
     ctx = ngx_http_get_module_ctx(r->main, ngx_http_filter_cache_module);
 
-    /*if client aborted, then we can't cache as we may be incomplete??*/
-    /*could this cause a loop?*/
-    /* if (!ctx || (FILTER_CACHEABLE != ctx->cacheable) || r->connection->close || r->connection->destroyed) { */
     if (!ctx || (FILTER_CACHEABLE != ctx->cacheable)) {
-        if(ctx && ctx->cache) {
-            ctx->cacheable = FILTER_DONOTCACHE;
-            ngx_http_filter_cache_free(ctx->cache, ctx->tf);
-        }
         return ngx_http_next_body_filter(r, in);
     }
 
@@ -990,15 +971,11 @@ ngx_http_filter_cache_body_filter(ngx_http_request_t *r, ngx_chain_t *in)
 
     /*XXX: need to find out if we reached the end*/
     for ( chain_link = in; chain_link != NULL; chain_link = chain_link->next ) {
-        if (chain_link->buf->last_buf)
-            chain_contains_last_buffer = 1;
+        if (chain_link->buf->last_buf || chain_link->buf->last_in_chain) {
+            ngx_http_filter_cache_update(r, ctx->tf);
+            ctx->cacheable = FILTER_CACHEDONE;
+        }
     }
-
-    if(chain_contains_last_buffer) {
-        ngx_http_filter_cache_update(r, ctx->tf);
-        ctx->cacheable = FILTER_CACHEDONE;
-    }
-
     return ngx_http_next_body_filter(r, in);
 }
 
