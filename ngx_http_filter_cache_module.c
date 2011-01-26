@@ -689,6 +689,7 @@ ngx_http_filter_cache_handler(ngx_http_request_t *r)
         break;
     case NGX_HTTP_CACHE_STALE:
         ctx->cache_status = NGX_HTTP_CACHE_EXPIRED;
+        /*return 599;*/
         break;
     case NGX_DECLINED:
         break;
@@ -772,7 +773,7 @@ ngx_http_filter_cache_header_filter(ngx_http_request_t *r)
         goto nocache;
     }
 
-    ngx_http_filter_cache_create(r);
+    /* ngx_http_filter_cache_create(r); */
 
     if (ctx->cache && ctx->cache->file.fd != NGX_INVALID_FILE) {
         ngx_pool_run_cleanup_file(r->pool, ctx->cache->file.fd);
@@ -925,6 +926,7 @@ ngx_http_filter_cache_header_filter(ngx_http_request_t *r)
 
     ctx->cache->body_start = (u_short) (ctx->buffer.pos - ctx->buffer.start);
     ngx_http_filter_cache_set_header(r, ctx->buffer.start);
+    ctx->cache->date = now;
 
     /*write to temp file*/
     ctx->buffer.pos =  ctx->buffer.start;
@@ -971,6 +973,20 @@ ngx_http_filter_cache_body_filter(ngx_http_request_t *r, ngx_chain_t *in)
         return ngx_http_next_body_filter(r, in);
     }
 
+    /* tetsing */
+    /* if(ctx->cache_status == NGX_HTTP_CACHE_EXPIRED) { */
+    /*      ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, */
+    /*                     "ngx_http_filter_cache_body_filter free"); */
+    /*     ngx_http_filter_cache_free(ctx->cache, ctx->tf ); */
+    /*     return ngx_http_next_body_filter(r, in); */
+    /* } */
+
+    if( ctx->tf->file.fd == NGX_INVALID_FILE ) {
+        ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+                       "ngx_http_filter_cache_body_filter invalid temp file");
+        return ngx_http_next_body_filter(r, in);
+    }
+
     offset = ngx_write_chain_to_temp_file(ctx->tf, in);
     ctx->tf->offset += offset;
 
@@ -986,6 +1002,7 @@ ngx_http_filter_cache_body_filter(ngx_http_request_t *r, ngx_chain_t *in)
         ctx->cacheable = FILTER_CACHEDONE;
         ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
                        "ngx_http_filter_cache_body_filter FILTER_CACHEDONE");
+        /* r->cached = 1; */
     } else {
         ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
                        "ngx_http_filter_cache_body_filter not done");
@@ -1079,19 +1096,19 @@ static ngx_int_t ngx_http_filter_cache_new(ngx_http_request_t *r)
 }
 
 
-static ngx_int_t ngx_http_filter_cache_create(ngx_http_request_t *r)
-{
-    ngx_http_cache_t *c = NULL;
-    ngx_http_filter_cache_ctx_t *ctx = NULL;
-    ngx_int_t rc;
+/* static ngx_int_t ngx_http_filter_cache_create(ngx_http_request_t *r) */
+/* { */
+/*     ngx_http_cache_t *c = NULL; */
+/*     ngx_http_filter_cache_ctx_t *ctx = NULL; */
+/*     ngx_int_t rc; */
 
-    ctx = ngx_http_get_module_ctx(r, ngx_http_filter_cache_module);
-    c = r->cache;
-    r->cache = ctx->cache;
-    rc = ngx_http_file_cache_create(r);
-    r->cache = c;
-    return rc;
-}
+/*     ctx = ngx_http_get_module_ctx(r, ngx_http_filter_cache_module); */
+/*     c = r->cache; */
+/*     r->cache = ctx->cache; */
+/*     rc = ngx_http_file_cache_create(r); */
+/*     r->cache = c; */
+/*     return rc; */
+/* } */
 
 static void ngx_http_filter_cache_create_key(ngx_http_request_t *r)
 {
@@ -1111,12 +1128,16 @@ static ngx_int_t ngx_http_filter_cache_open(ngx_http_request_t *r)
     ngx_http_cache_t *c = NULL;
     ngx_http_filter_cache_ctx_t *ctx = NULL;
     ngx_int_t rc;
+    unsigned  cached = r->cached;
 
     ctx = ngx_http_get_module_ctx(r, ngx_http_filter_cache_module);
     c = r->cache;
     r->cache = ctx->cache;
     rc = ngx_http_file_cache_open(r);
     r->cache = c;
+
+    r->cached = cached;
+
     return rc;
 }
 
