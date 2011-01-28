@@ -287,7 +287,7 @@ ngx_http_filter_cache_init(ngx_conf_t *cf)
 static void *
 ngx_http_filter_cache_create_conf(ngx_conf_t *cf)
 {
-    ngx_http_filter_cache_conf_t  *conf;
+    ngx_http_filter_cache_conf_t  *conf = NULL;
 
     conf = ngx_pcalloc(cf->pool, sizeof(ngx_http_filter_cache_conf_t));
     if (conf == NULL) {
@@ -319,7 +319,7 @@ ngx_http_filter_cache_merge_conf(ngx_conf_t *cf, void *parent, void *child)
                              prev->cache, NULL);
 
     if (conf->cache && conf->cache->data == NULL) {
-        ngx_shm_zone_t  *shm_zone;
+        ngx_shm_zone_t  *shm_zone = NULL;
 
         shm_zone = conf->cache;
 
@@ -395,8 +395,8 @@ static char *
 ngx_http_filter_cache(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 {
     ngx_http_filter_cache_conf_t *lcf = conf;
-    ngx_http_core_loc_conf_t  *core_conf;
-    ngx_str_t  *value;
+    ngx_http_core_loc_conf_t  *core_conf = NULL;
+    ngx_str_t  *value = NULL;
 
     value = cf->args->elts;
 
@@ -443,10 +443,10 @@ static ngx_int_t cache_miss(ngx_http_request_t *r,  ngx_http_filter_cache_ctx_t 
 static ngx_int_t
 filter_cache_send(ngx_http_request_t *r)
 {
-    ngx_http_cache_t  *c;
+    ngx_http_cache_t  *c = NULL;
     u_char *raw,*p,*hs;
     int flag = 0;
-    ngx_table_elt_t *h;
+    ngx_table_elt_t *h = NULL;
     ngx_str_t key,value;
 
     ngx_http_filter_cache_meta_t *meta;
@@ -569,11 +569,11 @@ static ngx_int_t
 ngx_http_filter_cache_handler(ngx_http_request_t *r)
 {
     ngx_http_filter_cache_ctx_t *ctx = NULL;
-    ngx_http_filter_cache_conf_t *conf;
-    ngx_http_variable_value_t      *vv;
-    ngx_http_cache_t  *c;
-    ngx_str_t                    *key;
-    ngx_int_t          rc;
+    ngx_http_filter_cache_conf_t *conf = NULL;
+    ngx_http_variable_value_t      *vv = NULL;
+    ngx_http_cache_t  *c = NULL;
+    ngx_str_t                    *key = NULL;
+    ngx_int_t          rc = NGX_ERROR;
 
     if(r != r->main) {
         /* we don't currently serve subrequests
@@ -955,10 +955,10 @@ nocache:
 static ngx_int_t
 ngx_http_filter_cache_body_filter(ngx_http_request_t *r, ngx_chain_t *in)
 {
-    ngx_http_filter_cache_ctx_t *ctx;
-    ngx_http_filter_cache_conf_t *conf;
-    ssize_t offset;
-    ngx_chain_t *chain_link;
+    ngx_http_filter_cache_ctx_t *ctx = NULL;
+    ngx_http_filter_cache_conf_t *conf = NULL;
+    ssize_t offset = 0;
+    ngx_chain_t *chain_link = NULL;
     int done = 0;
 
     ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
@@ -981,15 +981,13 @@ ngx_http_filter_cache_body_filter(ngx_http_request_t *r, ngx_chain_t *in)
 
     offset = ngx_write_chain_to_temp_file(ctx->tf, in);
     ctx->tf->offset += offset;
-    ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                   "ngx_http_filter_cache_body_filter offset: %ud", ctx->tf->offset);
 
 
     /*XXX: need to find out if we reached the end*/
     for ( chain_link = in; chain_link != NULL; chain_link = chain_link->next ) {
-        ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                       "ngx_http_filter_cache_body_filter main: %d, last_buf: %d, last_in_chain: %d",
-                       r == r->main, chain_link->buf->last_buf, chain_link->buf->last_in_chain);
+        /* ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, */
+        /*                "ngx_http_filter_cache_body_filter main: %d, last_buf: %d, last_in_chain: %d", */
+        /*                r == r->main, chain_link->buf->last_buf, chain_link->buf->last_in_chain); */
         if (chain_link->buf->last_buf || chain_link->buf->last_in_chain) {
             done = 1;
         }
