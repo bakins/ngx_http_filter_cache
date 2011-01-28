@@ -959,7 +959,7 @@ ngx_http_filter_cache_body_filter(ngx_http_request_t *r, ngx_chain_t *in)
     ngx_http_filter_cache_conf_t *conf;
     ssize_t offset;
     ngx_chain_t *chain_link;
-    int done;
+    int done = 0;
 
     ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
                    "ngx_http_filter_cache_body_filter start");
@@ -973,14 +973,6 @@ ngx_http_filter_cache_body_filter(ngx_http_request_t *r, ngx_chain_t *in)
         return ngx_http_next_body_filter(r, in);
     }
 
-    /* tetsing */
-    /* if(ctx->cache_status == NGX_HTTP_CACHE_EXPIRED) { */
-    /*      ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, */
-    /*                     "ngx_http_filter_cache_body_filter free"); */
-    /*     ngx_http_filter_cache_free(ctx->cache, ctx->tf ); */
-    /*     return ngx_http_next_body_filter(r, in); */
-    /* } */
-
     if( ctx->tf->file.fd == NGX_INVALID_FILE ) {
         ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
                        "ngx_http_filter_cache_body_filter invalid temp file");
@@ -989,9 +981,15 @@ ngx_http_filter_cache_body_filter(ngx_http_request_t *r, ngx_chain_t *in)
 
     offset = ngx_write_chain_to_temp_file(ctx->tf, in);
     ctx->tf->offset += offset;
+    ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+                   "ngx_http_filter_cache_body_filter offset: %ud", ctx->tf->offset);
+
 
     /*XXX: need to find out if we reached the end*/
     for ( chain_link = in; chain_link != NULL; chain_link = chain_link->next ) {
+        ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+                       "ngx_http_filter_cache_body_filter main: %d, last_buf: %d, last_in_chain: %d",
+                       r == r->main, chain_link->buf->last_buf, chain_link->buf->last_in_chain);
         if (chain_link->buf->last_buf || chain_link->buf->last_in_chain) {
             done = 1;
         }
@@ -1002,7 +1000,6 @@ ngx_http_filter_cache_body_filter(ngx_http_request_t *r, ngx_chain_t *in)
         ctx->cacheable = FILTER_CACHEDONE;
         ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
                        "ngx_http_filter_cache_body_filter FILTER_CACHEDONE");
-        /* r->cached = 1; */
     } else {
         ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
                        "ngx_http_filter_cache_body_filter not done");
