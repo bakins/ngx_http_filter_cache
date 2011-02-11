@@ -43,9 +43,10 @@ static void ngx_http_filter_cache_create_key(ngx_http_request_t *r);
 static ngx_int_t ngx_http_filter_cache_open(ngx_http_request_t *r);
 static void ngx_http_filter_cache_set_header(ngx_http_request_t *r, u_char *buf);
 static void ngx_http_filter_cache_update(ngx_http_request_t *r, ngx_temp_file_t *tf);
-static ngx_int_t ngx_http_filter_cache_send(ngx_http_request_t *);
 static void ngx_http_filter_cache_free(ngx_http_cache_t *c, ngx_temp_file_t *tf);
 static time_t ngx_http_filter_cache_valid(ngx_array_t *cache_valid, ngx_uint_t status);
+static ngx_int_t ngx_http_filter_cache_send_header(ngx_http_request_t *r);
+static ngx_int_t ngx_http_filter_cache_send(ngx_http_request_t *r);
 
 /*meta information prepended to every cache file */
 typedef struct
@@ -1163,21 +1164,6 @@ static void ngx_http_filter_cache_update(ngx_http_request_t *r, ngx_temp_file_t 
 }
 
 
-static ngx_int_t ngx_http_filter_cache_send(ngx_http_request_t *r)
-{
-    ngx_http_cache_t *c = NULL;
-    ngx_http_filter_cache_ctx_t *ctx = NULL;
-    ngx_int_t rc;
-
-    ctx = ngx_http_get_module_ctx(r, ngx_http_filter_cache_module);
-    c = r->cache;
-    r->cache = ctx->cache;
-    rc = ngx_http_cache_send(r);
-    r->cache = c;
-    return rc;
-}
-
-
 static void ngx_http_filter_cache_free(ngx_http_cache_t *c, ngx_temp_file_t *tf)
 {
     ngx_http_file_cache_free(c, tf);
@@ -1189,5 +1175,75 @@ static time_t ngx_http_filter_cache_valid(ngx_array_t *cache_valid, ngx_uint_t s
     return ngx_http_file_cache_valid(cache_valid, status);
 }
 
+static ngx_int_t
+ngx_http_filter_cache_send_header(ngx_http_request_t *r)
+{
+    if (r->err_status) {
+        r->headers_out.status = r->err_status;
+        r->headers_out.status_line.len = 0;
+    }
+    /* we use the filter after the cache filter */
+    return ngx_http_next_header_filter(r);
+}
 
+static ngx_int_t
+ngx_http_filter_cache_send(ngx_http_request_t *r)
+{
+    ngx_int_t          rc;
+    ngx_buf_t         *b;
+    ngx_chain_t        out;
+    ngx_http_cache_t  *c = NULL;
+    ngx_http_cache_t *orig = NULL;
+    ngx_http_filter_cache_ctx_t *ctx = NULL;
+
+    ctx = ngx_http_get_module_ctx(r, ngx_http_filter_cache_module);
+    orig = r->cache;
+    c = r->cache = ctx->cache;
+
+    ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+                   "http file cache send: %s", c->file.name.data);
+
+    /* we need to allocate all before the header would be sent */
+
+    b = ngx_pcalloc(r->pool, sizeof(ngx_buf_t));
+    if (b == NULL) {
+        r->cache = orig;
+        return NGX_HTTP_INTERNAL_SERVER_ERROR;
+    }
+
+    b->file = ngx_pcalloc(r->pool, sizeof(ngx_file_t));
+    if (b->file == NULL) {
+        r->cache = orig;
+        return NGX_HTTP_INTERNAL_SERVER_ERROR;
+    }
+
+    r->header_only = (c->length - c->body_start) == 0;
+
+    r->cache = orig;
+    rc = ngx_http_filter_cache_send_header(r);
+    c = r->cache = ctx->cache;
+
+    if (rc == NGX_ERROR || rc > NGX_OK || r->header_only) {
+        r->cache = orig;
+        return rc;
+    }
+
+    b->file_pos = c->body_start;
+    b->file_last = c->length;
+
+    b->in_file = 1;
+    b->last_buf = (r == r->main) ? 1: 0;
+    b->last_in_chain = 1;
+
+    b->file->fd = c->file.fd;
+    b->file->name = c->file.name;
+    b->file->log = r->connection->log;
+
+    out.buf = b;
+    out.next = NULL;
+
+    r->cache = orig;
+    /* we use the filter after the cache filter */
+    return ngx_http_next_body_filter(r, &out);
+}
 
