@@ -87,7 +87,7 @@ static ngx_conf_bitmask_t  ngx_http_filter_cache_next_upstream_masks[] = {
     { ngx_null_string, 0 }
 };
 
-static ngx_str_t  ngx_http_filter_cache_hide_headers[] = {
+static ngx_str_t ngx_http_filter_cache_hide_headers[] = {
     ngx_string("Content-Length"),
     ngx_string("Content-Encoding"),
     ngx_string("Set-Cookie"),
@@ -731,7 +731,8 @@ ngx_http_filter_cache_handler(ngx_http_request_t *r)
     return cache_miss(r, ctx, 1);
 }
 
-static ngx_inline ngx_int_t find_string_in_array(ngx_str_t *s, ngx_array_t *array)
+/*should be list??*/
+static ngx_int_t find_string_in_array(ngx_str_t *s, ngx_array_t *array)
 {
     ngx_uint_t i;
     ngx_str_t *h;
@@ -741,6 +742,7 @@ static ngx_inline ngx_int_t find_string_in_array(ngx_str_t *s, ngx_array_t *arra
     }
 
     h =  array->elts;
+
     for (i = 0; i < array->nelts; i++) {
         /* we already made sure s->len is not 0 above */
         if( (h[i].len == s->len) && h[i].data ) {
@@ -1060,7 +1062,7 @@ static char * ngx_http_filter_cache_hide_headers_merge(ngx_conf_t *cf, ngx_http_
     ngx_int_t merge = 0;
 
     if (conf->hide_headers == NGX_CONF_UNSET_PTR) {
-        conf->hide_headers = ngx_array_create(cf->pool, 4, sizeof(ngx_str_t));
+        conf->hide_headers = ngx_array_create(cf->pool, 16, sizeof(ngx_str_t));
         if (conf->hide_headers == NULL) {
             return NGX_CONF_ERROR;
         }
