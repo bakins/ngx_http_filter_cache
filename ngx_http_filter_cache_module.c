@@ -2,6 +2,9 @@
 #include <ngx_core.h>
 #include <ngx_http.h>
 
+/* see ngx_http_request.h */
+#define NGX_HTTP_FILTERCACHE_BUFFERED 0x80
+
 ngx_module_t  ngx_http_filter_cache_module;
 
 /*config */
@@ -88,6 +91,7 @@ static ngx_str_t  ngx_http_filter_cache_hide_headers[] = {
     ngx_string("Content-Length"),
     ngx_string("Content-Encoding"),
     ngx_string("Set-Cookie"),
+    ngx_string("Last-Modified"),
     ngx_null_string
 };
 
@@ -528,6 +532,24 @@ filter_cache_send(ngx_http_request_t *r)
     }
     raw = p + 1;
 
+    /* last-modified*/
+    key.data = raw;
+    p = memchr( (void *)raw, '\0', c->length - c->header_start - ( raw - hs ));
+    key.len = p - raw;
+    if(key.len) {
+        /*copied from ngx_http_gzip_static_module.c */
+        h = ngx_list_push(&r->headers_out.headers);
+        if ( h == NULL ) {
+            return NGX_HTTP_INTERNAL_SERVER_ERROR;
+        }
+        ngx_str_set(&h->key, "Last-Modified");
+        h->hash = 1;
+        h->value.len = key.len;
+        h->value.data = key.data;
+        r->headers_out.last_modified = h;
+    }
+    raw = p + 1;
+
     /* Stuff from the Table */
     key.data = raw;
     key.len = 0;
@@ -847,6 +869,7 @@ ngx_http_filter_cache_header_filter(ngx_http_request_t *r)
 
     /* Headers taht aren't in teh table for some reason */
 
+    /*Do we need to try to set it if it's not set???*/
     /* Content Type */
     if ( r->headers_out.content_type.data ) {
         p = memchr((void *)r->headers_out.content_type.data, ';', r->headers_out.content_type.len );
@@ -885,6 +908,17 @@ ngx_http_filter_cache_header_filter(ngx_http_request_t *r)
         ctx->buffer.pos++;
     }
 
+    /* Last-Modified */
+    if(r->headers_out.last_modified_time && r->headers_out.last_modified && r->headers_out.last_modified->value.len) {
+        ngx_cpystrn( ctx->buffer.pos, r->headers_out.last_modified->value.data, r->headers_out.last_modified->value.len + 1 );
+        ctx->buffer.pos += r->headers_out.last_modified->value.len + 1;
+    } else {
+        *ctx->buffer.pos = (u_char)'\0';
+        ctx->buffer.pos++;
+    }
+
+
+    /* XXX: is last-modified special???*/
     /* Everything From the Table */
     part = &r->headers_out.headers.part;
     h = part->elts;
@@ -962,33 +996,42 @@ ngx_http_filter_cache_body_filter(ngx_http_request_t *r, ngx_chain_t *in)
     ngx_chain_t *chain_link = NULL;
     int done = 0;
 
-    ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                   "ngx_http_filter_cache_body_filter start");
+    /* ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0, */
+    /*                "ngx_http_filter_cache_body_filter start"); */
+
+    if(!in) {
+        /* this is strange, but otehr modules seem to accept it an dmove on*/
+        /* ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0, */
+        /*               "ngx_http_filter_cache_body_filter : null input buffer"); */
+        return ngx_http_next_body_filter(r, in);
+    }
+
 
     conf = ngx_http_get_module_loc_conf(r, ngx_http_filter_cache_module);
     ctx = ngx_http_get_module_ctx(r->main, ngx_http_filter_cache_module);
 
     if (!ctx || (FILTER_CACHEABLE != ctx->cacheable)) {
-        ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                       "ngx_http_filter_cache_body_filter not cacheable");
+        /* ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0, */
+        /*                "ngx_http_filter_cache_body_filter not cacheable"); */
         return ngx_http_next_body_filter(r, in);
     }
 
     if( ctx->tf->file.fd == NGX_INVALID_FILE ) {
-        ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                       "ngx_http_filter_cache_body_filter invalid temp file");
+        /* ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0, */
+        /*                "ngx_http_filter_cache_body_filter invalid temp file"); */
         return ngx_http_next_body_filter(r, in);
     }
 
     offset = ngx_write_chain_to_temp_file(ctx->tf, in);
     ctx->tf->offset += offset;
 
+    r->connection->buffered |= NGX_HTTP_FILTERCACHE_BUFFERED;
 
     /*XXX: need to find out if we reached the end*/
     for ( chain_link = in; chain_link != NULL; chain_link = chain_link->next ) {
-        /* ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, */
-        /*                "ngx_http_filter_cache_body_filter main: %d, last_buf: %d, last_in_chain: %d", */
-        /*                r == r->main, chain_link->buf->last_buf, chain_link->buf->last_in_chain); */
+        /* ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0, */
+        /*                    "ngx_http_filter_cache_body_filter main: %d, last_buf: %d, last_in_chain: %d, size: %d, special: %d, buffered: %d", */
+        /*               r == r->main, chain_link->buf->last_buf, chain_link->buf->last_in_chain, ngx_buf_size(chain_link->buf), ngx_buf_special(chain_link->buf), r->connection->buffered); */
         if (chain_link->buf->last_buf || chain_link->buf->last_in_chain) {
             done = 1;
         }
@@ -997,15 +1040,17 @@ ngx_http_filter_cache_body_filter(ngx_http_request_t *r, ngx_chain_t *in)
     if(done) {
         ngx_http_filter_cache_update(r, ctx->tf);
         ctx->cacheable = FILTER_CACHEDONE;
-        ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                       "ngx_http_filter_cache_body_filter FILTER_CACHEDONE");
+        r->connection->buffered &= ~NGX_HTTP_FILTERCACHE_BUFFERED;
+        /* ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0, */
+        /*               "ngx_http_filter_cache_body_filter FILTER_CACHEDONE"); */
     } else {
-        ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                       "ngx_http_filter_cache_body_filter not done");
+        /* ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0, */
+        /*                "ngx_http_filter_cache_body_filter not done"); */
     }
 
-     ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                    "ngx_http_filter_cache_body_filter end");
+    /* ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, */
+    /* ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0, */
+    /*               "ngx_http_filter_cache_body_filter end"); */
     return ngx_http_next_body_filter(r, in);
 }
 
