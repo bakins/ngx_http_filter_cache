@@ -1082,6 +1082,7 @@ static char * ngx_http_filter_cache_hide_headers_merge(ngx_conf_t *cf, ngx_http_
     }
 
     if(merge) {
+        /*probably wrong.  just make this a list*/
         for (h = prev->hide_headers->elts; h->len; h++) {
             /*if we really wanted to squeeze the nth degree out of this, we could sort them and jump out if we find a value "larger" than us??
              * or use something qsort and disgard the duplicates? find_string_in_array is pretty effecient, as it only uses stncasecmp as a last resort
