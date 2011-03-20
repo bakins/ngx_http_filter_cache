@@ -1021,19 +1021,13 @@ ngx_http_filter_cache_body_filter(ngx_http_request_t *r, ngx_chain_t *in)
     offset = ngx_write_chain_to_temp_file(ctx->tf, in);
     ctx->tf->offset += offset;
 
-    ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0,
-                  "ngx_http_filter_cache_body_filter: offset: %d", ctx->tf->offset);
-
     r->connection->buffered |= NGX_HTTP_FILTERCACHE_BUFFERED;
 
     /*XXX: need to find out if we reached the end*/
     /*we can't be at the end if we are in a sub request */
     if(r == r->main) {
-        ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0,
-                      "ngx_http_filter_cache_body_filter: main request");
         for ( chain_link = in; chain_link != NULL; chain_link = chain_link->next ) {
-            ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0,
-                          "ngx_http_filter_cache_body_filter: last_buf: %d, last_in_chain: %d, sync: %d", chain_link->buf->last_buf, chain_link->buf->last_in_chain,  chain_link->buf->sync);
+            /* last_in_chain is used for sub requests?  also maybe need to find out about ->sync??*/
             /* if (chain_link->buf->last_buf || chain_link->buf->last_in_chain) { */
             if (chain_link->buf->last_buf) {
                 done = 1;
@@ -1048,16 +1042,7 @@ ngx_http_filter_cache_body_filter(ngx_http_request_t *r, ngx_chain_t *in)
         ngx_http_filter_cache_update(r, ctx->tf);
         ctx->cacheable = FILTER_CACHEDONE;
         r->connection->buffered &= ~NGX_HTTP_FILTERCACHE_BUFFERED;
-        /* ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0, */
-        /*               "ngx_http_filter_cache_body_filter FILTER_CACHEDONE"); */
-    } else {
-        /* ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0, */
-        /*                "ngx_http_filter_cache_body_filter not done"); */
     }
-
-    /* ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, */
-    /* ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0, */
-    /*               "ngx_http_filter_cache_body_filter end"); */
     return ngx_http_next_body_filter(r, in);
 }
 
