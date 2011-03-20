@@ -993,7 +993,6 @@ static ngx_int_t
 ngx_http_filter_cache_body_filter(ngx_http_request_t *r, ngx_chain_t *in)
 {
     ngx_http_filter_cache_ctx_t *ctx = NULL;
-    ngx_http_filter_cache_conf_t *conf = NULL;
     ssize_t offset = 0;
     ngx_chain_t *chain_link = NULL;
     int done = 0;
@@ -1001,15 +1000,10 @@ ngx_http_filter_cache_body_filter(ngx_http_request_t *r, ngx_chain_t *in)
     /* ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0, */
     /*                "ngx_http_filter_cache_body_filter start"); */
 
-    if(!in) {
-        /* this is strange, but otehr modules seem to accept it an dmove on*/
-        /* ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0, */
-        /*               "ngx_http_filter_cache_body_filter : null input buffer"); */
+    if (in == NULL) {
         return ngx_http_next_body_filter(r, in);
     }
 
-
-    conf = ngx_http_get_module_loc_conf(r, ngx_http_filter_cache_module);
     ctx = ngx_http_get_module_ctx(r->main, ngx_http_filter_cache_module);
 
     if (!ctx || (FILTER_CACHEABLE != ctx->cacheable)) {
@@ -1027,16 +1021,27 @@ ngx_http_filter_cache_body_filter(ngx_http_request_t *r, ngx_chain_t *in)
     offset = ngx_write_chain_to_temp_file(ctx->tf, in);
     ctx->tf->offset += offset;
 
+    ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0,
+                  "ngx_http_filter_cache_body_filter: offset: %d", ctx->tf->offset);
+
     r->connection->buffered |= NGX_HTTP_FILTERCACHE_BUFFERED;
 
     /*XXX: need to find out if we reached the end*/
-    for ( chain_link = in; chain_link != NULL; chain_link = chain_link->next ) {
-        /* ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0, */
-        /*                    "ngx_http_filter_cache_body_filter main: %d, last_buf: %d, last_in_chain: %d, size: %d, special: %d, buffered: %d", */
-        /*               r == r->main, chain_link->buf->last_buf, chain_link->buf->last_in_chain, ngx_buf_size(chain_link->buf), ngx_buf_special(chain_link->buf), r->connection->buffered); */
-        if (chain_link->buf->last_buf || chain_link->buf->last_in_chain) {
-            done = 1;
+    /*we can't be at the end if we are in a sub request */
+    if(r == r->main) {
+        ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0,
+                      "ngx_http_filter_cache_body_filter: main request");
+        for ( chain_link = in; chain_link != NULL; chain_link = chain_link->next ) {
+            ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0,
+                          "ngx_http_filter_cache_body_filter: last_buf: %d, last_in_chain: %d, sync: %d", chain_link->buf->last_buf, chain_link->buf->last_in_chain,  chain_link->buf->sync);
+            /* if (chain_link->buf->last_buf || chain_link->buf->last_in_chain) { */
+            if (chain_link->buf->last_buf) {
+                done = 1;
+            }
         }
+    } else {
+        ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0,
+                      "ngx_http_filter_cache_body_filter: sub request");
     }
 
     if(done) {
