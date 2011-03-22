@@ -1023,19 +1023,12 @@ ngx_http_filter_cache_body_filter(ngx_http_request_t *r, ngx_chain_t *in)
 
     r->connection->buffered |= NGX_HTTP_FILTERCACHE_BUFFERED;
 
-    /*XXX: need to find out if we reached the end*/
-    /*we can't be at the end if we are in a sub request */
-    if(r == r->main) {
-        for ( chain_link = in; chain_link != NULL; chain_link = chain_link->next ) {
-            /* last_in_chain is used for sub requests?  also maybe need to find out about ->sync??*/
-            /* if (chain_link->buf->last_buf || chain_link->buf->last_in_chain) { */
-            if (chain_link->buf->last_buf) {
-                done = 1;
-            }
+    for ( chain_link = in; chain_link != NULL; chain_link = chain_link->next ) {
+        /* last_in_chain is used for sub requests?  also maybe need to find out about ->sync??*/
+        /* if (chain_link->buf->last_buf || chain_link->buf->last_in_chain) { */
+        if (chain_link->buf->last_buf) {
+            done = 1;
         }
-    } else {
-        ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0,
-                      "ngx_http_filter_cache_body_filter: sub request");
     }
 
     if(done) {
