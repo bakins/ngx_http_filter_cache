@@ -12,20 +12,9 @@ typedef struct {
     ngx_http_upstream_conf_t upstream; /*we use upstream, just bcs configs and helper functions already exist*/
     ngx_uint_t                     headers_hash_max_size;
     ngx_uint_t                     headers_hash_bucket_size;
-
-    size_t                     buffer_size;
     ngx_int_t                index;
     time_t grace; /*how long after something is stale will be allow to serve stale*/
     ngx_http_complex_value_t cache_key;
-    ngx_shm_zone_t *cache;
-    ngx_uint_t cache_min_uses;
-    ngx_uint_t cache_use_stale;
-    ngx_uint_t cache_methods;
-    ngx_array_t *cache_valid;
-    ngx_array_t *cache_bypass;
-    ngx_array_t *no_cache;
-    ngx_path_t *temp_path;
-    ngx_array_t *hide_headers;
 } ngx_http_filter_cache_conf_t;
 
 static ngx_http_output_header_filter_pt  ngx_http_next_header_filter;
@@ -40,7 +29,6 @@ static ngx_int_t ngx_http_filter_cache_header_filter(ngx_http_request_t *r);
 static ngx_int_t ngx_http_filter_cache_body_filter(ngx_http_request_t *r, ngx_chain_t *in);
 static ngx_int_t ngx_http_filter_cache_add_variables(ngx_conf_t *cf);
 static ngx_int_t ngx_http_gzip_ok_variable(ngx_http_request_t *r, ngx_http_variable_value_t *v, uintptr_t data);
-static char *ngx_http_filter_cache_hide_headers_merge(ngx_conf_t *cf, ngx_http_filter_cache_conf_t *conf, ngx_http_filter_cache_conf_t *prev, ngx_str_t *default_hide_headers);
 static ngx_int_t ngx_http_filter_cache_status(ngx_http_request_t *r,
                                               ngx_http_variable_value_t *v, uintptr_t data);
 
@@ -119,56 +107,56 @@ static ngx_command_t  ngx_http_filter_cache_commands[] = {
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_1MORE,
       ngx_http_set_predicate_slot,
       NGX_HTTP_LOC_CONF_OFFSET,
-      offsetof(ngx_http_filter_cache_conf_t, cache_bypass),
+      offsetof(ngx_http_filter_cache_conf_t, upstream.cache_bypass),
       NULL },
 
     { ngx_string("filter_cache_disable"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_1MORE,
       ngx_http_set_predicate_slot,
       NGX_HTTP_LOC_CONF_OFFSET,
-      offsetof(ngx_http_filter_cache_conf_t, no_cache),
+      offsetof(ngx_http_filter_cache_conf_t, upstream.no_cache),
       NULL },
 
     { ngx_string("filter_cache_valid"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_1MORE,
       ngx_http_file_cache_valid_set_slot,
       NGX_HTTP_LOC_CONF_OFFSET,
-      offsetof(ngx_http_filter_cache_conf_t, cache_valid),
+      offsetof(ngx_http_filter_cache_conf_t, upstream.cache_valid),
       NULL },
 
     { ngx_string("filter_cache_min_uses"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
       ngx_conf_set_num_slot,
       NGX_HTTP_LOC_CONF_OFFSET,
-      offsetof(ngx_http_filter_cache_conf_t, cache_min_uses),
+      offsetof(ngx_http_filter_cache_conf_t, upstream.cache_min_uses),
       NULL },
 
     { ngx_string("filter_cache_use_stale"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_1MORE,
       ngx_conf_set_bitmask_slot,
       NGX_HTTP_LOC_CONF_OFFSET,
-      offsetof(ngx_http_filter_cache_conf_t, cache_use_stale),
+      offsetof(ngx_http_filter_cache_conf_t, upstream.cache_use_stale),
       &ngx_http_filter_cache_next_upstream_masks },
 
     { ngx_string("filter_cache_methods"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_1MORE,
       ngx_conf_set_bitmask_slot,
       NGX_HTTP_LOC_CONF_OFFSET,
-      offsetof(ngx_http_filter_cache_conf_t, cache_methods),
+      offsetof(ngx_http_filter_cache_conf_t, upstream.cache_methods),
       &ngx_http_upstream_cache_method_mask },
 
     { ngx_string("filter_cache_temp_path"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1234,
       ngx_conf_set_path_slot,
       NGX_HTTP_LOC_CONF_OFFSET,
-      offsetof(ngx_http_filter_cache_conf_t, temp_path),
+      offsetof(ngx_http_filter_cache_conf_t, upstream.temp_path),
       NULL },
 
     { ngx_string("filter_cache_buffer_size"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
       ngx_conf_set_size_slot,
       NGX_HTTP_LOC_CONF_OFFSET,
-      offsetof(ngx_http_filter_cache_conf_t, buffer_size),
+      offsetof(ngx_http_filter_cache_conf_t, upstream.buffer_size),
       NULL },
 
     { ngx_string("filter_cache_hide_header"),
@@ -317,15 +305,17 @@ ngx_http_filter_cache_create_conf(ngx_conf_t *cf)
     if (conf == NULL) {
         return NULL;
     }
-    conf->cache = NGX_CONF_UNSET_PTR;
-    conf->cache_min_uses = NGX_CONF_UNSET_UINT;
-    conf->cache_bypass = NGX_CONF_UNSET_PTR;
-    conf->no_cache = NGX_CONF_UNSET_PTR;
-    conf->cache_valid = NGX_CONF_UNSET_PTR;
-    conf->buffer_size = NGX_CONF_UNSET_SIZE;
+    conf->upstream.cache = NGX_CONF_UNSET_PTR;
+    conf->upstream.cache_min_uses = NGX_CONF_UNSET_UINT;
+    conf->upstream.cache_bypass = NGX_CONF_UNSET_PTR;
+    conf->upstream.no_cache = NGX_CONF_UNSET_PTR;
+    conf->upstream.cache_valid = NGX_CONF_UNSET_PTR;
+    conf->upstream.buffer_size = NGX_CONF_UNSET_SIZE;
     conf->grace = NGX_CONF_UNSET;
 
     conf->upstream.hide_headers = NGX_CONF_UNSET_PTR;
+    conf->upstream.pass_headers = NGX_CONF_UNSET_PTR;
+
     conf->headers_hash_max_size = NGX_CONF_UNSET_UINT;
     conf->headers_hash_bucket_size = NGX_CONF_UNSET_UINT;
 
@@ -365,13 +355,13 @@ ngx_http_filter_cache_merge_conf(ngx_conf_t *cf, void *parent, void *child)
         return NGX_CONF_ERROR;
     }
 
-    ngx_conf_merge_ptr_value(conf->cache,
-                             prev->cache, NULL);
+    ngx_conf_merge_ptr_value(conf->upstream.cache,
+                             prev->upstream.cache, NULL);
 
-    if (conf->cache && conf->cache->data == NULL) {
+    if (conf->upstream.cache && conf->upstream.cache->data == NULL) {
         ngx_shm_zone_t  *shm_zone = NULL;
 
-        shm_zone = conf->cache;
+        shm_zone = conf->upstream.cache;
 
         ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
                            "\"filter_cache\" zone \"%V\" is unknown",
@@ -380,62 +370,62 @@ ngx_http_filter_cache_merge_conf(ngx_conf_t *cf, void *parent, void *child)
         return NGX_CONF_ERROR;
     }
 
-    ngx_conf_merge_uint_value(conf->cache_min_uses,
-                              prev->cache_min_uses, 1);
+    ngx_conf_merge_uint_value(conf->upstream.cache_min_uses,
+                              prev->upstream.cache_min_uses, 1);
 
-    ngx_conf_merge_bitmask_value(conf->cache_use_stale,
-                              prev->cache_use_stale,
+    ngx_conf_merge_bitmask_value(conf->upstream.cache_use_stale,
+                              prev->upstream.cache_use_stale,
                               (NGX_CONF_BITMASK_SET
                                |NGX_HTTP_UPSTREAM_FT_OFF));
 
-    if (conf->cache_use_stale & NGX_HTTP_UPSTREAM_FT_OFF) {
-        conf->cache_use_stale = NGX_CONF_BITMASK_SET
+    if (conf->upstream.cache_use_stale & NGX_HTTP_UPSTREAM_FT_OFF) {
+        conf->upstream.cache_use_stale = NGX_CONF_BITMASK_SET
                                          |NGX_HTTP_UPSTREAM_FT_OFF;
     }
 
-    if (conf->cache_methods == 0) {
-        conf->cache_methods = prev->cache_methods;
+    if (conf->upstream.cache_methods == 0) {
+        conf->upstream.cache_methods = prev->upstream.cache_methods;
     }
 
-    conf->cache_methods |= NGX_HTTP_GET|NGX_HTTP_HEAD;
+    conf->upstream.cache_methods |= NGX_HTTP_GET|NGX_HTTP_HEAD;
 
-    ngx_conf_merge_ptr_value(conf->cache_bypass,
-                             prev->cache_bypass, NULL);
+    ngx_conf_merge_ptr_value(conf->upstream.cache_bypass,
+                             prev->upstream.cache_bypass, NULL);
 
-    ngx_conf_merge_ptr_value(conf->no_cache,
-                             prev->no_cache, NULL);
+    ngx_conf_merge_ptr_value(conf->upstream.no_cache,
+                             prev->upstream.no_cache, NULL);
 
-    if (conf->no_cache && conf->cache_bypass == NULL) {
+    if (conf->upstream.no_cache && conf->upstream.cache_bypass == NULL) {
         ngx_log_error(NGX_LOG_WARN, cf->log, 0,
                       "\"filter_cache_disable\" should generally be used together with \"filter_cache_bypass\"");
     }
 
-    ngx_conf_merge_ptr_value(conf->cache_valid,
-                             prev->cache_valid, NULL);
+    ngx_conf_merge_ptr_value(conf->upstream.cache_valid,
+                             prev->upstream.cache_valid, NULL);
 
     if (conf->cache_key.value.data == NULL) {
         conf->cache_key = prev->cache_key;
     }
 
-    if (ngx_conf_merge_path_value(cf, &conf->temp_path,
-                                  prev->temp_path,
+    if (ngx_conf_merge_path_value(cf, &conf->upstream.temp_path,
+                                  prev->upstream.temp_path,
                                   &ngx_http_filter_cache_temp_path)
         != NGX_OK)
     {
         return NGX_CONF_ERROR;
     }
 
-    ngx_conf_merge_size_value(conf->buffer_size,
-                              prev->buffer_size,
+    ngx_conf_merge_size_value(conf->upstream.buffer_size,
+                              prev->upstream.buffer_size,
                               (size_t) ngx_pagesize);
 
 
     hash.max_size = conf->headers_hash_max_size;
     hash.bucket_size = conf->headers_hash_bucket_size;
-    hash.name = "proxy_headers_hash";
+    hash.name = "filter_cache_headers_hash";
 
     if (ngx_http_upstream_hide_headers_hash(cf, &conf->upstream,
-            &prev->upstream, ngx_http_proxy_hide_headers, &hash)
+            &prev->upstream, ngx_http_filter_cache_hide_headers, &hash)
         != NGX_OK)
     {
         return NGX_CONF_ERROR;
@@ -457,11 +447,11 @@ ngx_http_filter_cache(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
     value = cf->args->elts;
 
     if (ngx_strcmp(value[1].data, "off") == 0) {
-        lcf->cache = NULL;
+        lcf->upstream.cache = NULL;
         return NGX_CONF_OK;
     }
 
-    if (lcf->cache != NGX_CONF_UNSET_PTR) {
+    if (lcf->upstream.cache != NGX_CONF_UNSET_PTR) {
         return "is duplicate";
     }
 
@@ -471,9 +461,9 @@ ngx_http_filter_cache(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
         return NGX_CONF_ERROR;
     }
 
-    lcf->cache = ngx_shared_memory_add(cf, &value[1], 0,
+    lcf->upstream.cache = ngx_shared_memory_add(cf, &value[1], 0,
                                        &ngx_http_filter_cache_module);
-    if (lcf->cache == NULL) {
+    if (lcf->upstream.cache == NULL) {
         return NGX_CONF_ERROR;
     }
 
@@ -684,7 +674,7 @@ ngx_http_filter_cache_handler(ngx_http_request_t *r)
     /* needed so the ctx works in cache status*/
     ngx_http_set_ctx(r, ctx, ngx_http_filter_cache_module);
 
-    switch (ngx_http_test_predicates(r, conf->cache_bypass)) {
+    switch (ngx_http_test_predicates(r, conf->upstream.cache_bypass)) {
     case NGX_ERROR:
         ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, __FILE__" ngx_http_test_predicates returned an error for bypass");
         return NGX_ERROR;
@@ -695,7 +685,7 @@ ngx_http_filter_cache_handler(ngx_http_request_t *r)
         break;
     }
 
-    if (!(r->method & conf->cache_methods)) {
+    if (!(r->method & conf->upstream.cache_methods)) {
         return cache_miss(r, NULL, 0);
     }
 
@@ -728,21 +718,21 @@ ngx_http_filter_cache_handler(ngx_http_request_t *r)
     key->data = ctx->key.data;
     key->len = ctx->key.len;
 
-    ctx->cache->file_cache = conf->cache->data;
+    ctx->cache->file_cache = conf->upstream.cache->data;
     ngx_http_filter_cache_create_key(r);
     /* ngx_http_filter_cache_create(r); */
 
     c = ctx->cache;
 
-    c->min_uses = conf->cache_min_uses;
-    c->body_start = conf->buffer_size;
-    c->file_cache = conf->cache->data;
+    c->min_uses = conf->upstream.cache_min_uses;
+    c->body_start = conf->upstream.buffer_size;
+    c->file_cache = conf->upstream.cache->data;
 
     rc = ngx_http_filter_cache_open(r);
 
     switch(rc) {
     case NGX_HTTP_CACHE_UPDATING:
-        if (conf->cache_use_stale & NGX_HTTP_UPSTREAM_FT_UPDATING) {
+        if (conf->upstream.cache_use_stale & NGX_HTTP_UPSTREAM_FT_UPDATING) {
             if(ctx->cache && conf->grace && ( (ctx->cache->valid_sec - ngx_time() ) < conf->grace)) {
                 ctx->cache_status = NGX_HTTP_CACHE_UPDATING;
                 rc = NGX_OK;
@@ -807,7 +797,7 @@ ngx_http_filter_cache_header_filter(ngx_http_request_t *r)
 
     conf = ngx_http_get_module_loc_conf(r, ngx_http_filter_cache_module);
 
-    switch (ngx_http_test_predicates(r, conf->no_cache)) {
+    switch (ngx_http_test_predicates(r, conf->upstream.no_cache)) {
     case NGX_ERROR:
         ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, __FILE__" ngx_http_test_predicates returned an error for no_cache");
         return NGX_ERROR;
@@ -834,7 +824,7 @@ ngx_http_filter_cache_header_filter(ngx_http_request_t *r)
     now = ngx_time();
 
     valid = 0;
-    valid = ngx_http_filter_cache_valid(conf->cache_valid,
+    valid = ngx_http_filter_cache_valid(conf->upstream.cache_valid,
                                       r->headers_out.status);
     if (valid) {
         ctx->cache->valid_sec = now + valid;
@@ -850,7 +840,7 @@ ngx_http_filter_cache_header_filter(ngx_http_request_t *r)
 
     tf->file.fd = NGX_INVALID_FILE;
     tf->file.log = r->connection->log;
-    tf->path = conf->temp_path;
+    tf->path = conf->upstream.temp_path;
     tf->pool = r->pool;
     tf->persistent = 1;
 
@@ -868,8 +858,8 @@ ngx_http_filter_cache_header_filter(ngx_http_request_t *r)
     cln->handler = filter_cache_cleanup;
     cln->data = ctx;
 
-    ctx->buffer.pos = ctx->buffer.start = ngx_palloc(r->pool, conf->buffer_size);
-    ctx->buffer.end = ctx->buffer.start + conf->buffer_size;
+    ctx->buffer.pos = ctx->buffer.start = ngx_palloc(r->pool, conf->upstream.buffer_size);
+    ctx->buffer.end = ctx->buffer.start + conf->upstream.buffer_size;
     ctx->buffer.temporary = 1;
     ctx->buffer.memory = 1;
     ctx->buffer.last_buf = 1;
@@ -965,7 +955,7 @@ ngx_http_filter_cache_header_filter(ngx_http_request_t *r)
                 if((h[i].lowcase_key = ngx_pnalloc(r->pool, h->key.len +1)) == NULL) {
                     continue;
                 }
-                ngx_strlow(h[i]->lowcase_key, h[i]->key.data, h[i]->key.len);
+                ngx_strlow(h[i].lowcase_key, h[i].key.data, h[i].key.len);
             }
 
             if (ngx_hash_find(&conf->upstream.hide_headers_hash, h[i].hash,
