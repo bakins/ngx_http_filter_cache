@@ -950,13 +950,17 @@ ngx_http_filter_cache_header_filter(ngx_http_request_t *r)
         }
 
         /*need to be really sure this header is "valid"*/
-        if(h[i].key.len && h[i].value.len && h[i].hash) {
-            if(!h[i].lowcase_key) {
-                if((h[i].lowcase_key = ngx_pnalloc(r->pool, h->key.len +1)) == NULL) {
-                    continue;
-                }
-                ngx_strlow(h[i].lowcase_key, h[i].key.data, h[i].key.len);
-            }
+        if(h[i].key.len && h[i].value.len && h[i].hash && h[i].lowcase_key) {
+            /* if(!h[i].lowcase_key) { */
+            /*     if((h[i].lowcase_key = ngx_pnalloc(r->pool, h->key.len +1)) == NULL) { */
+            /*         continue; */
+            /*     } */
+            /*     ngx_strlow(h[i].lowcase_key, h[i].key.data, h[i].key.len); */
+            /* } */
+
+            /* if(!h[i].hash) { */
+            /*     h[i].hash = ngx_hash_key_lc(h[i].key.data, h[i].key.len); */
+            /* } */
 
             if (ngx_hash_find(&conf->upstream.hide_headers_hash, h[i].hash,
                               h[i].lowcase_key, h[i].key.len))
