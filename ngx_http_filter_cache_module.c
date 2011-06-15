@@ -1026,7 +1026,6 @@ static ngx_int_t
 ngx_http_filter_cache_body_filter(ngx_http_request_t *r, ngx_chain_t *in)
 {
     ngx_http_filter_cache_ctx_t *ctx = NULL;
-    ngx_http_filter_cache_conf_t *conf = NULL;
     ssize_t offset = 0;
     ngx_chain_t *chain_link = NULL;
     int done = 0;
@@ -1034,15 +1033,10 @@ ngx_http_filter_cache_body_filter(ngx_http_request_t *r, ngx_chain_t *in)
     /* ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0, */
     /*                "ngx_http_filter_cache_body_filter start"); */
 
-    if(!in) {
-        /* this is strange, but otehr modules seem to accept it an dmove on*/
-        /* ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0, */
-        /*               "ngx_http_filter_cache_body_filter : null input buffer"); */
+    if (in == NULL) {
         return ngx_http_next_body_filter(r, in);
     }
 
-
-    conf = ngx_http_get_module_loc_conf(r, ngx_http_filter_cache_module);
     ctx = ngx_http_get_module_ctx(r->main, ngx_http_filter_cache_module);
 
     if (!ctx || (FILTER_CACHEABLE != ctx->cacheable)) {
@@ -1062,12 +1056,10 @@ ngx_http_filter_cache_body_filter(ngx_http_request_t *r, ngx_chain_t *in)
 
     r->connection->buffered |= NGX_HTTP_FILTERCACHE_BUFFERED;
 
-    /*XXX: need to find out if we reached the end*/
     for ( chain_link = in; chain_link != NULL; chain_link = chain_link->next ) {
-        /* ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0, */
-        /*                    "ngx_http_filter_cache_body_filter main: %d, last_buf: %d, last_in_chain: %d, size: %d, special: %d, buffered: %d", */
-        /*               r == r->main, chain_link->buf->last_buf, chain_link->buf->last_in_chain, ngx_buf_size(chain_link->buf), ngx_buf_special(chain_link->buf), r->connection->buffered); */
-        if (chain_link->buf->last_buf || chain_link->buf->last_in_chain) {
+        /* last_in_chain is used for sub requests?  also maybe need to find out about ->sync??*/
+        /* if (chain_link->buf->last_buf || chain_link->buf->last_in_chain) { */
+        if (chain_link->buf->last_buf) {
             done = 1;
         }
     }
@@ -1076,16 +1068,7 @@ ngx_http_filter_cache_body_filter(ngx_http_request_t *r, ngx_chain_t *in)
         ngx_http_filter_cache_update(r, ctx->tf);
         ctx->cacheable = FILTER_CACHEDONE;
         r->connection->buffered &= ~NGX_HTTP_FILTERCACHE_BUFFERED;
-        /* ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0, */
-        /*               "ngx_http_filter_cache_body_filter FILTER_CACHEDONE"); */
-    } else {
-        /* ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0, */
-        /*                "ngx_http_filter_cache_body_filter not done"); */
     }
-
-    /* ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0, */
-    /* ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0, */
-    /*               "ngx_http_filter_cache_body_filter end"); */
     return ngx_http_next_body_filter(r, in);
 }
 
