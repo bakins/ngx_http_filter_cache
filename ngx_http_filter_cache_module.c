@@ -328,12 +328,78 @@ static ngx_path_init_t  ngx_http_filter_cache_temp_path = {
     ngx_string("/tmp/filter_cache"), { 1, 2, 0 }
 };
 
+static ngx_int_t find_string_in_array(ngx_str_t *s, ngx_array_t *array)
+{
+    ngx_uint_t i;
+    ngx_str_t *h;
+
+    if(!s || !array || !s->len || !s->data || !array->nelts) {
+        return 0;
+    }
+
+    h =  array->elts;
+
+    for (i = 0; i < array->nelts; i++) {
+        /* we already made sure s->len is not 0 above */
+        if( (h[i].len == s->len) && h[i].data ) {
+            /*only need to do check if lengths are the same*/
+            if(!ngx_strncasecmp((u_char *)h[i].data, (u_char *)s->data, s->len)) {
+                return 1;
+            }
+        }
+    }
+    return 0;
+}
+
+static ngx_int_t ngx_http_filter_cache_hide_headers_merge(ngx_conf_t *cf, ngx_http_filter_cache_conf_t *conf, ngx_http_filter_cache_conf_t *prev, ngx_str_t *default_hide_headers)
+{
+    ngx_str_t *h, *hk;
+    ngx_int_t merge = 0;
+
+    if (conf->upstream.hide_headers == NGX_CONF_UNSET_PTR) {
+        conf->upstream.hide_headers = ngx_array_create(cf->pool, 16, sizeof(ngx_str_t));
+        if (conf->upstream.hide_headers == NULL) {
+            return NGX_ERROR;
+        }
+    }
+
+    if(prev->upstream.hide_headers == NGX_CONF_UNSET_PTR) {
+        /*easy case, neither are set*/
+        for (h = default_hide_headers; h->len && h->data; h++) {
+            hk = ngx_array_push(conf->upstream.hide_headers);
+            if (hk == NULL) {
+                return NGX_ERROR;
+            }
+            *hk = *h;
+        }
+    } else {
+        merge = 1;
+    }
+
+    if(merge) {
+        /*probably wrong.  just make this a list*/
+        for (h = prev->upstream.hide_headers->elts; h->len; h++) {
+            /*if we really wanted to squeeze the nth degree out of this, we could sort them and jump out if we find a value "larger" than us??
+             * or use something qsort and disgard the duplicates? find_string_in_array is pretty effecient, as it only uses stncasecmp as a last resort
+             */
+            if(!find_string_in_array(h, conf->upstream.hide_headers)){
+                hk = ngx_array_push(conf->upstream.hide_headers);
+                if (hk == NULL) {
+                    return NGX_ERROR;
+                }
+                *hk = *h;
+            }
+        }
+    }
+    return NGX_OK;
+}
+
 static char *
 ngx_http_filter_cache_merge_conf(ngx_conf_t *cf, void *parent, void *child)
 {
     ngx_http_filter_cache_conf_t *prev = parent;
     ngx_http_filter_cache_conf_t *conf = child;
-    ngx_hash_init_t             hash;
+    /* ngx_hash_init_t             hash; */
 
     ngx_conf_merge_uint_value(conf->headers_hash_max_size,
                               prev->headers_hash_max_size, 512);
@@ -344,12 +410,7 @@ ngx_http_filter_cache_merge_conf(ngx_conf_t *cf, void *parent, void *child)
     conf->headers_hash_bucket_size = ngx_align(conf->headers_hash_bucket_size,
                                                ngx_cacheline_size);
 
-    hash.max_size = conf->headers_hash_max_size;
-    hash.bucket_size = conf->headers_hash_bucket_size;
-    hash.name = "filter_cache_headers_hash";
-
-    if (ngx_http_upstream_hide_headers_hash(cf, &conf->upstream,
-                                            &prev->upstream, ngx_http_filter_cache_hide_headers, &hash)
+    if (ngx_http_filter_cache_hide_headers_merge(cf, conf, prev, ngx_http_filter_cache_hide_headers)
         != NGX_OK)
     {
         return NGX_CONF_ERROR;
@@ -420,16 +481,16 @@ ngx_http_filter_cache_merge_conf(ngx_conf_t *cf, void *parent, void *child)
                               (size_t) ngx_pagesize);
 
 
-    hash.max_size = conf->headers_hash_max_size;
-    hash.bucket_size = conf->headers_hash_bucket_size;
-    hash.name = "filter_cache_headers_hash";
+    /* hash.max_size = conf->headers_hash_max_size; */
+    /* hash.bucket_size = conf->headers_hash_bucket_size; */
+    /* hash.name = "filter_cache_headers_hash"; */
 
-    if (ngx_http_upstream_hide_headers_hash(cf, &conf->upstream,
-            &prev->upstream, ngx_http_filter_cache_hide_headers, &hash)
-        != NGX_OK)
-    {
-        return NGX_CONF_ERROR;
-    }
+    /* if (ngx_http_upstream_hide_headers_hash(cf, &conf->upstream, */
+    /*         &prev->upstream, ngx_http_filter_cache_hide_headers, &hash) */
+    /*     != NGX_OK) */
+    /* { */
+    /*     return NGX_CONF_ERROR; */
+    /* } */
 
     ngx_conf_merge_value(conf->grace,
                          prev->grace, 0);
@@ -950,7 +1011,8 @@ ngx_http_filter_cache_header_filter(ngx_http_request_t *r)
         }
 
         /*need to be really sure this header is "valid"*/
-        if(h[i].key.len && h[i].value.len && h[i].hash && h[i].lowcase_key) {
+        /* if(h[i].key.len && h[i].value.len && h[i].hash && h[i].lowcase_key) {*/
+
             /* if(!h[i].lowcase_key) { */
             /*     if((h[i].lowcase_key = ngx_pnalloc(r->pool, h->key.len +1)) == NULL) { */
             /*         continue; */
@@ -962,12 +1024,16 @@ ngx_http_filter_cache_header_filter(ngx_http_request_t *r)
             /*     h[i].hash = ngx_hash_key_lc(h[i].key.data, h[i].key.len); */
             /* } */
 
-            if (ngx_hash_find(&conf->upstream.hide_headers_hash, h[i].hash,
-                              h[i].lowcase_key, h[i].key.len))
-            {
+            /* if (ngx_hash_find(&conf->upstream.hide_headers_hash, h[i].hash, */
+            /*                   h[i].lowcase_key, h[i].key.len)) */
+            /* { */
+            /*     continue; */
+            /* } */
+
+        if(h[i].key.len && h[i].value.len) {
+            if(find_string_in_array(&(h[i].key), conf->upstream.hide_headers)){
                 continue;
             }
-
             if ( (ngx_uint_t)(h[i].key.len + h[i].value.len + 4) > (ngx_uint_t)(ctx->buffer.last - ctx->buffer.pos) ) {
                 ctx->cacheable = FILTER_DONOTCACHE;
                 break;
