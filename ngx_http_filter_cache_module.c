@@ -1109,10 +1109,34 @@ ngx_http_filter_cache_body_filter(ngx_http_request_t *r, ngx_chain_t *in)
         /* ngx_log_error(NGX_LOG_DEBUG, r->connection->log, 0, */
         /*                "ngx_http_filter_cache_body_filter invalid temp file"); */
         return ngx_http_next_body_filter(r, in);
-    }
+    } else {
+        ngx_chain_t *cl = NULL;
+        ngx_chain_t *head = NULL;
+        ngx_buf_t *b = NULL;
 
-    offset = ngx_write_chain_to_temp_file(ctx->tf, in);
-    ctx->tf->offset += offset;
+        for ( chain_link = in; chain_link != NULL; chain_link = chain_link->next ) {
+            b = chain_link->buf;
+
+            if(b->pos && b->last) {
+                if(!cl) {
+                    head = cl = ngx_alloc_chain_link(r->pool);
+                } else {
+                    cl->next = ngx_alloc_chain_link(r->pool);
+                    cl = cl->next;
+                }
+                 if (cl == NULL) {
+                        return NGX_ERROR;
+                 }
+                 cl->buf = b;
+                 cl->next = NULL;
+            }
+        }
+
+        if (head) {
+            offset = ngx_write_chain_to_temp_file(ctx->tf, in);
+            ctx->tf->offset += offset;
+        }
+    }
 
     r->connection->buffered |= NGX_HTTP_FILTERCACHE_BUFFERED;
 
