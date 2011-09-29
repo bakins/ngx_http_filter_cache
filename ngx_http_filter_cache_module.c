@@ -1133,7 +1133,7 @@ ngx_http_filter_cache_body_filter(ngx_http_request_t *r, ngx_chain_t *in)
         }
 
         if (head) {
-            offset = ngx_write_chain_to_temp_file(ctx->tf, in);
+            offset = ngx_write_chain_to_temp_file(ctx->tf, head);
             ctx->tf->offset += offset;
         }
     }
