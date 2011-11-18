@@ -110,7 +110,7 @@ disabled.
 Copyright & License
 
 /* 
- * Copyright (C) 2002-2011 Brian Akins
+ * Copyright (C) 2009-2011 Brian Akins
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
