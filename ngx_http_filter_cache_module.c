@@ -287,11 +287,23 @@ ngx_http_gzip_ok_variable(ngx_http_request_t *r, ngx_http_variable_value_t *v, u
 static ngx_int_t
 ngx_http_filter_cache_init(ngx_conf_t *cf)
 {
+    ngx_http_handler_pt        *h;
+    ngx_http_core_main_conf_t  *cmcf;
+
     ngx_http_next_header_filter = ngx_http_top_header_filter;
     ngx_http_top_header_filter = ngx_http_filter_cache_header_filter;
 
     ngx_http_next_body_filter = ngx_http_top_body_filter;
     ngx_http_top_body_filter = ngx_http_filter_cache_body_filter;
+
+    cmcf = ngx_http_conf_get_module_main_conf(cf, ngx_http_core_module);
+
+    h = ngx_array_push(&cmcf->phases[NGX_HTTP_REWRITE_PHASE].handlers);
+    if (h == NULL) {
+        return NGX_ERROR;
+    }
+
+    *h = ngx_http_filter_cache_handler;
 
     return NGX_OK;
 }
@@ -528,9 +540,6 @@ ngx_http_filter_cache(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
         return NGX_CONF_ERROR;
     }
 
-    core_conf = ngx_http_conf_get_module_loc_conf(cf, ngx_http_core_module);
-    core_conf->handler =  ngx_http_filter_cache_handler;
-
     return NGX_CONF_OK;
 }
 
@@ -541,10 +550,9 @@ static ngx_int_t cache_miss(ngx_http_request_t *r,  ngx_http_filter_cache_ctx_t 
         if(set_filter && !r->header_only) {
             r->filter_cache = ctx;
             ctx->cacheable = FILTER_TRYCACHE; /*this is a hack. the filter will figure out if it is cacheable?? */
-            return 599;
         }
     }
-    return 598;
+    return NGX_DECLINED;
 }
 
 static ngx_int_t
@@ -709,6 +717,11 @@ ngx_http_filter_cache_handler(ngx_http_request_t *r)
     }
 
     conf = ngx_http_get_module_loc_conf(r, ngx_http_filter_cache_module);
+
+    /* turned off */
+    if (NULL == conf->upstream.cache) {
+        return cache_miss(r, NULL, 0);
+    }
 
     ctx = r->filter_cache;
 
