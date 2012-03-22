@@ -60,7 +60,6 @@ typedef struct
 /*context for the filter*/
 typedef struct
 {
-    ngx_flag_t handler;
     unsigned cache_status:3;
     unsigned cacheable:3;
     ngx_str_t key;
@@ -560,20 +559,20 @@ ngx_http_filter_cache(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 }
 
 /* return 598 when we are not goign to attempt to cache this, 599 if it was just a cache miss of some type */
-static ngx_int_t cache_miss(ngx_http_request_t *r,  ngx_http_filter_cache_ctx_t *ctx, int set_filter)
+static ngx_int_t cache_miss(ngx_http_request_t *r,  ngx_http_filter_cache_ctx_t *ctx, int set_filter, int handler)
 {
     if(ctx) {
         if(set_filter && !r->header_only) {
             r->filter_cache = ctx;
             ctx->cacheable = FILTER_TRYCACHE; /*this is a hack. the filter will figure out if it is cacheable?? */
-            if(ctx->handler) {
+            if(handler) {
                 return 599;
             }
 
         }
     }
 
-    return ctx->handler ? 598 : NGX_DECLINED;
+    return handler ? 598 : NGX_DECLINED;
 }
 
 static ngx_int_t
@@ -741,13 +740,12 @@ ngx_http_filter_cache_handler(ngx_http_request_t *r)
 
     /* turned off */
     if (NULL == conf->upstream.cache) {
-        return cache_miss(r, NULL, 0);
+        return cache_miss(r, NULL, 0, conf->handler);
     }
 
     ctx = r->filter_cache;
 
     if(ctx) {
-        ctx->handler = conf->handler;
         /*loop detected??*/
         ngx_log_error(NGX_LOG_INFO, r->connection->log, 0,
                       "cache loop in " __FILE__);
@@ -755,7 +753,7 @@ ngx_http_filter_cache_handler(ngx_http_request_t *r)
          * should loop return yet another status code??
          * be configurable and default to 598??
          */
-        return cache_miss(r, NULL, 0);
+        return cache_miss(r, NULL, 0, conf->handler);
     }
 
     ctx = ngx_pcalloc(r->pool, sizeof(ngx_http_filter_cache_ctx_t));
@@ -777,13 +775,13 @@ ngx_http_filter_cache_handler(ngx_http_request_t *r)
         return NGX_ERROR;
     case NGX_DECLINED:
         ctx->cache_status = NGX_HTTP_CACHE_BYPASS;
-        return cache_miss(r, NULL, 0);
+        return cache_miss(r, NULL, 0, conf->handler);
     default: /* NGX_OK */
         break;
     }
 
     if (!(r->method & conf->upstream.cache_methods)) {
-        return cache_miss(r, NULL, 0);
+        return cache_miss(r, NULL, 0, conf->handler);
     }
 
     rc = ngx_http_discard_request_body(r);
@@ -855,7 +853,7 @@ ngx_http_filter_cache_handler(ngx_http_request_t *r)
     case NGX_DECLINED:
         break;
     case NGX_HTTP_CACHE_SCARCE:
-        return cache_miss(r, ctx, 0);
+        return cache_miss(r, ctx, 0, conf->handler);
         break;
     case NGX_AGAIN:
         return NGX_BUSY;
@@ -866,7 +864,7 @@ ngx_http_filter_cache_handler(ngx_http_request_t *r)
         break;
     }
 
-    return cache_miss(r, ctx, 1);
+    return cache_miss(r, ctx, 1, conf->handler);
 }
 
 static ngx_int_t
