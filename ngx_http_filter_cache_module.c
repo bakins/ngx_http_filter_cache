@@ -733,7 +733,7 @@ ngx_http_filter_cache_handler(ngx_http_request_t *r)
          * if we ever do subrequests, we will need a way to associate a ctx with this request
          * maybe keep an r in ctx and compare to r here?
          */
-        return cache_miss(r, NULL, 0);
+        return cache_miss(r, NULL, 0, 0);
     }
 
     conf = ngx_http_get_module_loc_conf(r, ngx_http_filter_cache_module);
