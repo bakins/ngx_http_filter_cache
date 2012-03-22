@@ -13,6 +13,7 @@ typedef struct {
     ngx_uint_t                     headers_hash_max_size;
     ngx_uint_t                     headers_hash_bucket_size;
     ngx_int_t                index;
+    ngx_flag_t               handler;
     time_t grace; /*how long after something is stale will be allow to serve stale*/
     ngx_http_complex_value_t cache_key;
 } ngx_http_filter_cache_conf_t;
@@ -59,6 +60,7 @@ typedef struct
 /*context for the filter*/
 typedef struct
 {
+    ngx_flag_t handler;
     unsigned cache_status:3;
     unsigned cacheable:3;
     ngx_str_t key;
@@ -187,6 +189,12 @@ static ngx_command_t  ngx_http_filter_cache_commands[] = {
       offsetof(ngx_http_filter_cache_conf_t, headers_hash_bucket_size),
       NULL },
 
+    { ngx_string("filter_cache_handler"),
+      NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_FLAG,
+      ngx_conf_set_flag_slot,
+      NGX_HTTP_LOC_CONF_OFFSET,
+      offsetof(ngx_http_filter_cache_conf_t, handler),
+      NULL },
 
     ngx_null_command
 };
@@ -330,7 +338,7 @@ ngx_http_filter_cache_create_conf(ngx_conf_t *cf)
 
     conf->headers_hash_max_size = NGX_CONF_UNSET_UINT;
     conf->headers_hash_bucket_size = NGX_CONF_UNSET_UINT;
-
+    conf->handler = NGX_CONF_UNSET;
 
     return conf;
 }
@@ -507,6 +515,9 @@ ngx_http_filter_cache_merge_conf(ngx_conf_t *cf, void *parent, void *child)
     ngx_conf_merge_value(conf->grace,
                          prev->grace, 0);
 
+    ngx_conf_merge_value(conf->handler,
+                         prev->handler, 1);
+
     return NGX_CONF_OK;
 }
 
@@ -540,6 +551,11 @@ ngx_http_filter_cache(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
         return NGX_CONF_ERROR;
     }
 
+    if(lcf->handler) {
+        core_conf = ngx_http_conf_get_module_loc_conf(cf, ngx_http_core_module);
+        core_conf->handler =  ngx_http_filter_cache_handler;
+    }
+
     return NGX_CONF_OK;
 }
 
@@ -550,9 +566,14 @@ static ngx_int_t cache_miss(ngx_http_request_t *r,  ngx_http_filter_cache_ctx_t 
         if(set_filter && !r->header_only) {
             r->filter_cache = ctx;
             ctx->cacheable = FILTER_TRYCACHE; /*this is a hack. the filter will figure out if it is cacheable?? */
+            if(ctx->handler) {
+                return 599;
+            }
+
         }
     }
-    return NGX_DECLINED;
+
+    return ctx->handler ? 598 : NGX_DECLINED;
 }
 
 static ngx_int_t
@@ -726,6 +747,7 @@ ngx_http_filter_cache_handler(ngx_http_request_t *r)
     ctx = r->filter_cache;
 
     if(ctx) {
+        ctx->handler = conf->handler;
         /*loop detected??*/
         ngx_log_error(NGX_LOG_INFO, r->connection->log, 0,
                       "cache loop in " __FILE__);
@@ -744,6 +766,7 @@ ngx_http_filter_cache_handler(ngx_http_request_t *r)
     ctx->cache = NULL;
     ctx->cacheable = FILTER_DONOTCACHE;
     ctx->cache_status = NGX_HTTP_CACHE_MISS;
+    ctx->handler = conf->handler;
 
     /* needed so the ctx works in cache status*/
     r->filter_cache = ctx;
