@@ -764,7 +764,6 @@ ngx_http_filter_cache_handler(ngx_http_request_t *r)
     ctx->cache = NULL;
     ctx->cacheable = FILTER_DONOTCACHE;
     ctx->cache_status = NGX_HTTP_CACHE_MISS;
-    ctx->handler = conf->handler;
 
     /* needed so the ctx works in cache status*/
     r->filter_cache = ctx;
