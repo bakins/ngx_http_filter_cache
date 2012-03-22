@@ -22,6 +22,7 @@ static ngx_http_output_header_filter_pt  ngx_http_next_header_filter;
 static ngx_http_output_body_filter_pt    ngx_http_next_body_filter;
 static ngx_str_t ngx_http_filter_cache_key = ngx_string("filter_cache_key");
 static ngx_int_t ngx_http_filter_cache_init(ngx_conf_t *cf);
+static ngx_int_t ngx_http_filter_cache_rewrite_handler(ngx_http_request_t *r);
 static ngx_int_t ngx_http_filter_cache_handler(ngx_http_request_t *r);
 static void *ngx_http_filter_cache_create_conf(ngx_conf_t *cf);
 static char *ngx_http_filter_cache_merge_conf(ngx_conf_t *cf, void *parent, void *child);
@@ -310,7 +311,7 @@ ngx_http_filter_cache_init(ngx_conf_t *cf)
         return NGX_ERROR;
     }
 
-    *h = ngx_http_filter_cache_handler;
+    *h = ngx_http_filter_cache_rewrite_handler;
 
     return NGX_OK;
 }
@@ -552,7 +553,7 @@ ngx_http_filter_cache(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 
     if(lcf->handler) {
         core_conf = ngx_http_conf_get_module_loc_conf(cf, ngx_http_core_module);
-        core_conf->handler =  ngx_http_filter_cache_handler;
+        core_conf->handler = ngx_http_filter_cache_handler;
     }
 
     return NGX_CONF_OK;
@@ -716,6 +717,17 @@ filter_cache_send(ngx_http_request_t *r)
     }
 
     return ngx_http_filter_cache_send(r);
+}
+
+static ngx_int_t
+ngx_http_filter_cache_rewrite_handler(ngx_http_request_t *r)
+{
+    conf = ngx_http_get_module_loc_conf(r, ngx_http_filter_cache_module);
+    if(conf->handler) {
+        return NGX_DECLINED;
+    } else {
+        return ngx_http_filter_cache_handler(r);
+    }
 }
 
 static ngx_int_t
