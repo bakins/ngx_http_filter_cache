@@ -1347,7 +1347,6 @@ ngx_http_filter_cache_send(ngx_http_request_t *r)
     ngx_chain_t        out;
     ngx_http_cache_t  *c = NULL;
     ngx_http_filter_cache_ctx_t *ctx = NULL;
-    ngx_http_filter_cache_conf_t *conf = ngx_http_get_module_loc_conf(r, ngx_http_filter_cache_module);
 
     ctx = r->filter_cache;
     c = ctx->cache;
