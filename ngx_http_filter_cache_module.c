@@ -554,8 +554,9 @@ ngx_http_filter_cache(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 
     core_conf = ngx_http_conf_get_module_loc_conf(cf, ngx_http_core_module);
     lcf->orig_handler = core_conf->handler;
-    core_conf->handler = ngx_http_filter_cache_handler;
-
+    if(conf->handler) {
+        core_conf->handler = ngx_http_filter_cache_handler;
+    }
     return NGX_CONF_OK;
 }
 
