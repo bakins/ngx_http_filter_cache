@@ -1372,32 +1372,23 @@ ngx_http_filter_cache_send(ngx_http_request_t *r)
 
     rc = ngx_http_filter_cache_send_header(r);
 
-    if (rc == NGX_ERROR || rc > NGX_OK) {
+    if (rc == NGX_ERROR || rc > NGX_OK || r->header_only) {
         return rc;
     }
 
-    if (r->header_only) {
-        if(conf->handler) {
-            return rc;
-        } else{
-            b->last_buf = (r == r->main) ? 1: 0;
-            b->last_in_chain = 1;
-        }
-    } else {
-        b->file_pos = c->body_start;
-        b->file_last = c->length;
+    b->file_pos = c->body_start;
+    b->file_last = c->length;
 
-        b->in_file = 1;
-        b->last_buf = (r == r->main) ? 1: 0;
-        b->last_in_chain = 1;
+    b->in_file = 1;
+    b->last_buf = (r == r->main) ? 1: 0;
+    b->last_in_chain = 1;
 
-        b->file->fd = c->file.fd;
-        b->file->name = c->file.name;
-        b->file->log = r->connection->log;
+    b->file->fd = c->file.fd;
+    b->file->name = c->file.name;
+    b->file->log = r->connection->log;
 
-        out.buf = b;
-        out.next = NULL;
-    }
+    out.buf = b;
+    out.next = NULL;
 
     /* we use the filter after the cache filter */
     return  ngx_http_next_body_filter(r, &out);
