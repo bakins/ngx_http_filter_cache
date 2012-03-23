@@ -22,7 +22,7 @@ static ngx_http_output_header_filter_pt  ngx_http_next_header_filter;
 static ngx_http_output_body_filter_pt    ngx_http_next_body_filter;
 static ngx_str_t ngx_http_filter_cache_key = ngx_string("filter_cache_key");
 static ngx_int_t ngx_http_filter_cache_init(ngx_conf_t *cf);
-static ngx_int_t ngx_http_filter_cache_rewrite_handler(ngx_http_request_t *r);
+static ngx_int_t ngx_http_filter_cache_access_handler(ngx_http_request_t *r);
 static ngx_int_t ngx_http_filter_cache_handler(ngx_http_request_t *r);
 static void *ngx_http_filter_cache_create_conf(ngx_conf_t *cf);
 static char *ngx_http_filter_cache_merge_conf(ngx_conf_t *cf, void *parent, void *child);
@@ -306,12 +306,12 @@ ngx_http_filter_cache_init(ngx_conf_t *cf)
 
     cmcf = ngx_http_conf_get_module_main_conf(cf, ngx_http_core_module);
 
-    h = ngx_array_push(&cmcf->phases[NGX_HTTP_REWRITE_PHASE].handlers);
+    h = ngx_array_push(&cmcf->phases[NGX_HTTP_ACCESS_PHASE].handlers);
     if (h == NULL) {
         return NGX_ERROR;
     }
 
-    *h = ngx_http_filter_cache_rewrite_handler;
+    *h = ngx_http_filter_cache_access_handler;
 
     return NGX_OK;
 }
@@ -720,7 +720,7 @@ filter_cache_send(ngx_http_request_t *r)
 }
 
 static ngx_int_t
-ngx_http_filter_cache_rewrite_handler(ngx_http_request_t *r)
+ngx_http_filter_cache_access_handler(ngx_http_request_t *r)
 {
     ngx_http_filter_cache_conf_t *conf = ngx_http_get_module_loc_conf(r, ngx_http_filter_cache_module);
     return conf->handler ? NGX_DECLINED : ngx_http_filter_cache_handler(r);
@@ -1341,6 +1341,7 @@ ngx_http_filter_cache_send(ngx_http_request_t *r)
     ngx_http_cache_t  *c = NULL;
     ngx_http_cache_t *orig = NULL;
     ngx_http_filter_cache_ctx_t *ctx = NULL;
+    ngx_http_filter_cache_conf_t *conf = ngx_http_get_module_loc_conf(r, ngx_http_filter_cache_module);
 
     ctx = r->filter_cache;
     orig = r->cache;
@@ -1369,27 +1370,46 @@ ngx_http_filter_cache_send(ngx_http_request_t *r)
     rc = ngx_http_filter_cache_send_header(r);
     c = r->cache = ctx->cache;
 
-    if (rc == NGX_ERROR || rc > NGX_OK || r->header_only) {
+    if (rc == NGX_ERROR || rc > NGX_OK) {
         r->cache = orig;
         return rc;
     }
 
-    b->file_pos = c->body_start;
-    b->file_last = c->length;
+    if (r->header_only) {
+        if(conf->handler) {
+            return rc;
+        } else{
+            b->last_buf = (r == r->main) ? 1: 0;
+            b->last_in_chain = 1;
+        }
+    } else {
+        b->file_pos = c->body_start;
+        b->file_last = c->length;
 
-    b->in_file = 1;
-    b->last_buf = (r == r->main) ? 1: 0;
-    b->last_in_chain = 1;
+        b->in_file = 1;
+        b->last_buf = (r == r->main) ? 1: 0;
+        b->last_in_chain = 1;
 
-    b->file->fd = c->file.fd;
-    b->file->name = c->file.name;
-    b->file->log = r->connection->log;
+        b->file->fd = c->file.fd;
+        b->file->name = c->file.name;
+        b->file->log = r->connection->log;
 
-    out.buf = b;
-    out.next = NULL;
+        out.buf = b;
+        out.next = NULL;
+    }
 
     r->cache = orig;
     /* we use the filter after the cache filter */
-    return ngx_http_next_body_filter(r, &out);
+    rc = ngx_http_next_body_filter(r, &out);
+
+    if(conf->handler) {
+        return rc;
+    }
+
+    if (rc == NGX_ERROR || rc >= NGX_HTTP_SPECIAL_RESPONSE) {
+        return rc;
+    }
+    ngx_http_finalize_request(r, NGX_OK);
+    return NGX_DONE;
 }
 
