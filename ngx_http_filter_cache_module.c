@@ -1364,7 +1364,6 @@ ngx_http_filter_cache_send(ngx_http_request_t *r)
 
     b->file = ngx_pcalloc(r->pool, sizeof(ngx_file_t));
     if (b->file == NULL) {
-        r->cache = orig;
         return NGX_HTTP_INTERNAL_SERVER_ERROR;
     }
 
