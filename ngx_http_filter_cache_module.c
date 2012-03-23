@@ -14,6 +14,7 @@ typedef struct {
     ngx_uint_t                     headers_hash_bucket_size;
     ngx_int_t                index;
     ngx_flag_t               handler;
+    ngx_http_handler_pt      orig_handler;
     time_t grace; /*how long after something is stale will be allow to serve stale*/
     ngx_http_complex_value_t cache_key;
 } ngx_http_filter_cache_conf_t;
@@ -306,7 +307,7 @@ ngx_http_filter_cache_init(ngx_conf_t *cf)
 
     cmcf = ngx_http_conf_get_module_main_conf(cf, ngx_http_core_module);
 
-    h = ngx_array_push(&cmcf->phases[NGX_HTTP_ACCESS_PHASE].handlers);
+    h = ngx_array_push(&cmcf->phases[NGX_HTTP_CONTENT_PHASE].handlers);
     if (h == NULL) {
         return NGX_ERROR;
     }
@@ -551,10 +552,12 @@ ngx_http_filter_cache(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
         return NGX_CONF_ERROR;
     }
 
-    if(lcf->handler) {
-        core_conf = ngx_http_conf_get_module_loc_conf(cf, ngx_http_core_module);
-        core_conf->handler = ngx_http_filter_cache_handler;
-    }
+    core_conf = ngx_http_conf_get_module_loc_conf(cf, ngx_http_core_module);
+    lcf->orig_handler = core_conf->handler;
+
+    /*if(lcf->handler) {*/
+    core_conf->handler = ngx_http_filter_cache_handler;
+/*}*/
 
     return NGX_CONF_OK;
 }
@@ -566,7 +569,12 @@ static ngx_int_t cache_miss(ngx_http_request_t *r,  ngx_http_filter_cache_ctx_t 
         if(set_filter && !r->header_only) {
             r->filter_cache = ctx;
             ctx->cacheable = FILTER_TRYCACHE; /*this is a hack. the filter will figure out if it is cacheable?? */
-            return handler ? 599 : NGX_DECLINED;
+            if (handler) {
+                return 599;
+            } else {
+                ngx_http_filter_cache_conf_t *conf = ngx_http_get_module_loc_conf(r, ngx_http_filter_cache_module);
+                return conf->orig_handler ? conf->orig_handler(r) :  NGX_DECLINED;
+            }
         }
     }
 
@@ -720,7 +728,12 @@ static ngx_int_t
 ngx_http_filter_cache_access_handler(ngx_http_request_t *r)
 {
     ngx_http_filter_cache_conf_t *conf = ngx_http_get_module_loc_conf(r, ngx_http_filter_cache_module);
-    return conf->handler ? NGX_DECLINED : ngx_http_filter_cache_handler(r);
+
+    if (conf->orig_handler || conf->handler) {
+        /*we have another handler, so we can't handle it here at all*/
+        return NGX_DECLINED;
+    }
+    return ngx_http_filter_cache_handler(r);
 }
 
 static ngx_int_t
