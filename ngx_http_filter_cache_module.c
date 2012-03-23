@@ -1391,6 +1391,6 @@ ngx_http_filter_cache_send(ngx_http_request_t *r)
     out.next = NULL;
 
     /* we use the filter after the cache filter */
-    return  ngx_http_next_body_filter(r, &out);
+    return ngx_http_next_body_filter(r, &out);
 }
 
