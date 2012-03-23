@@ -23,7 +23,7 @@ static ngx_http_output_header_filter_pt  ngx_http_next_header_filter;
 static ngx_http_output_body_filter_pt    ngx_http_next_body_filter;
 static ngx_str_t ngx_http_filter_cache_key = ngx_string("filter_cache_key");
 static ngx_int_t ngx_http_filter_cache_init(ngx_conf_t *cf);
-static ngx_int_t ngx_http_filter_cache_access_handler(ngx_http_request_t *r);
+static ngx_int_t ngx_http_filter_cache_content_handler(ngx_http_request_t *r);
 static ngx_int_t ngx_http_filter_cache_handler(ngx_http_request_t *r);
 static void *ngx_http_filter_cache_create_conf(ngx_conf_t *cf);
 static char *ngx_http_filter_cache_merge_conf(ngx_conf_t *cf, void *parent, void *child);
@@ -312,7 +312,7 @@ ngx_http_filter_cache_init(ngx_conf_t *cf)
         return NGX_ERROR;
     }
 
-    *h = ngx_http_filter_cache_access_handler;
+    *h = ngx_http_filter_cache_content_handler;
 
     return NGX_OK;
 }
@@ -554,15 +554,12 @@ ngx_http_filter_cache(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 
     core_conf = ngx_http_conf_get_module_loc_conf(cf, ngx_http_core_module);
     lcf->orig_handler = core_conf->handler;
-
-    /*if(lcf->handler) {*/
     core_conf->handler = ngx_http_filter_cache_handler;
-/*}*/
 
     return NGX_CONF_OK;
 }
 
-/* return 598 when we are not goign to attempt to cache this, 599 if it was just a cache miss of some type */
+/* return 598 when we are not going to attempt to cache this, 599 if it was just a cache miss of some type */
 static ngx_int_t cache_miss(ngx_http_request_t *r,  ngx_http_filter_cache_ctx_t *ctx, int set_filter, int handler)
 {
     if(ctx) {
@@ -725,7 +722,7 @@ filter_cache_send(ngx_http_request_t *r)
 }
 
 static ngx_int_t
-ngx_http_filter_cache_access_handler(ngx_http_request_t *r)
+ngx_http_filter_cache_content_handler(ngx_http_request_t *r)
 {
     ngx_http_filter_cache_conf_t *conf = ngx_http_get_module_loc_conf(r, ngx_http_filter_cache_module);
 
@@ -1349,13 +1346,11 @@ ngx_http_filter_cache_send(ngx_http_request_t *r)
     ngx_buf_t         *b;
     ngx_chain_t        out;
     ngx_http_cache_t  *c = NULL;
-    ngx_http_cache_t *orig = NULL;
     ngx_http_filter_cache_ctx_t *ctx = NULL;
     ngx_http_filter_cache_conf_t *conf = ngx_http_get_module_loc_conf(r, ngx_http_filter_cache_module);
 
     ctx = r->filter_cache;
-    orig = r->cache;
-    c = r->cache = ctx->cache;
+    c = ctx->cache;
 
     ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
                    "http file cache send: %s", c->file.name.data);
@@ -1364,7 +1359,6 @@ ngx_http_filter_cache_send(ngx_http_request_t *r)
 
     b = ngx_pcalloc(r->pool, sizeof(ngx_buf_t));
     if (b == NULL) {
-        r->cache = orig;
         return NGX_HTTP_INTERNAL_SERVER_ERROR;
     }
 
@@ -1376,12 +1370,9 @@ ngx_http_filter_cache_send(ngx_http_request_t *r)
 
     r->header_only = (c->length - c->body_start) == 0;
 
-    r->cache = orig;
     rc = ngx_http_filter_cache_send_header(r);
-    c = r->cache = ctx->cache;
 
     if (rc == NGX_ERROR || rc > NGX_OK) {
-        r->cache = orig;
         return rc;
     }
 
@@ -1408,19 +1399,7 @@ ngx_http_filter_cache_send(ngx_http_request_t *r)
         out.next = NULL;
     }
 
-    r->cache = orig;
     /* we use the filter after the cache filter */
     return  ngx_http_next_body_filter(r, &out);
-    /* rc = ngx_http_next_body_filter(r, &out); */
-
-    /* if(conf->handler) { */
-    /*     return rc; */
-    /* } */
-
-    /* if (rc == NGX_ERROR || rc >= NGX_HTTP_SPECIAL_RESPONSE) { */
-    /*     return rc; */
-    /* } */
-    /* ngx_http_finalize_request(r, NGX_OK); */
-    /* return NGX_DONE; */
 }
 
