@@ -1410,16 +1410,17 @@ ngx_http_filter_cache_send(ngx_http_request_t *r)
 
     r->cache = orig;
     /* we use the filter after the cache filter */
-    rc = ngx_http_next_body_filter(r, &out);
+    return  ngx_http_next_body_filter(r, &out);
+    /* rc = ngx_http_next_body_filter(r, &out); */
 
-    if(conf->handler) {
-        return rc;
-    }
+    /* if(conf->handler) { */
+    /*     return rc; */
+    /* } */
 
-    if (rc == NGX_ERROR || rc >= NGX_HTTP_SPECIAL_RESPONSE) {
-        return rc;
-    }
-    ngx_http_finalize_request(r, NGX_OK);
-    return NGX_DONE;
+    /* if (rc == NGX_ERROR || rc >= NGX_HTTP_SPECIAL_RESPONSE) { */
+    /*     return rc; */
+    /* } */
+    /* ngx_http_finalize_request(r, NGX_OK); */
+    /* return NGX_DONE; */
 }
 
