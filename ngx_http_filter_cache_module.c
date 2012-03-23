@@ -566,10 +566,7 @@ static ngx_int_t cache_miss(ngx_http_request_t *r,  ngx_http_filter_cache_ctx_t 
         if(set_filter && !r->header_only) {
             r->filter_cache = ctx;
             ctx->cacheable = FILTER_TRYCACHE; /*this is a hack. the filter will figure out if it is cacheable?? */
-            if(handler) {
-                return 599;
-            }
-
+            return handler ? 599 : NGX_DECLINED;
         }
     }
 
